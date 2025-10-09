@@ -7,12 +7,12 @@
 import { initializeApp, getApps, getApp, FirebaseApp } from "firebase/app";
 
 const firebaseConfig = {
-  "apiKey": "mock-api-key",
-  "authDomain": "mock-auth-domain",
-  "projectId": "mock-project-id",
-  "storageBucket": "mock-storage-bucket",
-  "messagingSenderId": "mock-messaging-sender-id",
-  "appId": "mock-app-id"
+  "projectId": "studio-2705179619-e376d",
+  "appId": "1:533733919681:web:a57016c2cc55e6edf93d40",
+  "apiKey": "AIzaSyCZII37Vm4rlEKqBUBwrQMSJL7vE8qEjMA",
+  "authDomain": "studio-2705179619-e376d.firebaseapp.com",
+  "measurementId": "",
+  "messagingSenderId": "533733919681"
 };
 
 function getFirebaseApp(): FirebaseApp {
