@@ -5,43 +5,109 @@ import type { Task } from '@/lib/types';
 import { AppHeader } from '@/components/app/header';
 import { TaskForm } from '@/components/app/task-form';
 import { TaskList } from '@/components/app/task-list';
+import { useUser } from '@/firebase';
+import {
+  getFirestore,
+  collection,
+  addDoc,
+  serverTimestamp,
+  updateDoc,
+  doc,
+  deleteDoc,
+  writeBatch,
+} from 'firebase/firestore';
+import { useCollection } from 'react-firebase-hooks/firestore';
+import { Button } from '@/components/ui/button';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
 
 export default function Home() {
-  const [tasks, setTasks] = useState<Task[]>([]);
+  const { user, loading: userLoading } = useUser();
+  const db = getFirestore();
 
-  const handleAddTask = (description: string) => {
-    const newTask: Task = {
-      id: `task-${Date.now()}`,
+  const [tasksSnapshot, loading, error] = useCollection(
+    user ? collection(db, 'users', user.uid, 'tasks') : null
+  );
+
+  const tasks: Task[] =
+    tasksSnapshot?.docs.map(doc => ({
+      id: doc.id,
+      ...(doc.data() as Omit<Task, 'id'>),
+    })) || [];
+
+  const handleAddTask = async (description: string) => {
+    if (!user) return;
+    const newTask: Omit<Task, 'id' | 'createdAt'> & { createdAt: any } = {
       description,
       status: 'active',
-      createdAt: Date.now(),
+      userId: user.uid,
+      createdAt: serverTimestamp(),
     };
-    setTasks(prevTasks => [newTask, ...prevTasks]);
+    await addDoc(collection(db, 'users', user.uid, 'tasks'), newTask);
   };
 
-  const handleUpdateTask = (id: string, updates: Partial<Task>) => {
-    setTasks(prevTasks =>
-      prevTasks.map(task => (task.id === id ? { ...task, ...updates } : task))
-    );
+  const handleUpdateTask = async (id: string, updates: Partial<Task>) => {
+    if (!user) return;
+    const taskRef = doc(db, 'users', user.uid, 'tasks', id);
+    await updateDoc(taskRef, updates);
   };
 
-  const handleDeleteTask = (id: string) => {
-    setTasks(prevTasks => prevTasks.filter(task => task.id !== id));
+  const handleDeleteTask = async (id: string) => {
+    if (!user) return;
+    const taskRef = doc(db, 'users', user.uid, 'tasks', id);
+    await deleteDoc(taskRef);
   };
+
+  const handleSetTasks = async (newTasks: Task[]) => {
+    if (!user) return;
+    const batch = writeBatch(db);
+    newTasks.forEach(task => {
+      const taskRef = doc(db, 'users', user.uid, 'tasks', task.id);
+      batch.set(taskRef, task, { merge: true });
+    });
+    await batch.commit();
+  };
+
+  const handleSignIn = async () => {
+    const auth = getAuth();
+    const provider = new GoogleAuthProvider();
+    try {
+      await signInWithPopup(auth, provider);
+    } catch (error) {
+      console.error('Error signing in with Google', error);
+    }
+  };
+
+  const handleSignOut = async () => {
+    const auth = getAuth();
+    await signOut(auth);
+  };
+
+  if (userLoading) {
+    return <div>Loading...</div>;
+  }
 
   return (
     <div className="flex flex-col min-h-screen bg-background text-foreground">
-      <AppHeader />
+      <AppHeader user={user} onSignOut={handleSignOut} />
       <main className="flex-1 container mx-auto px-4 md:px-6 py-8">
-        <div className="max-w-3xl mx-auto flex flex-col gap-8">
-          <TaskForm onAddTask={handleAddTask} />
-          <TaskList
-            tasks={tasks}
-            onUpdateTask={handleUpdateTask}
-            onDeleteTask={handleDeleteTask}
-            onSetTasks={setTasks}
-          />
-        </div>
+        {user ? (
+          <div className="max-w-3xl mx-auto flex flex-col gap-8">
+            <TaskForm onAddTask={handleAddTask} />
+            <TaskList
+              tasks={tasks}
+              onUpdateTask={handleUpdateTask}
+              onDeleteTask={handleDeleteTask}
+              onSetTasks={handleSetTasks}
+              loading={loading}
+            />
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center h-[60vh] gap-4 text-center">
+            <h2 className="text-2xl font-bold">Welcome to FocusFlow</h2>
+            <p className="text-muted-foreground">Please sign in to manage your tasks.</p>
+            <Button onClick={handleSignIn}>Sign in with Google</Button>
+          </div>
+        )}
       </main>
     </div>
   );

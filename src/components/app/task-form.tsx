@@ -7,17 +7,20 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 
 interface TaskFormProps {
-  onAddTask: (description: string) => void;
+  onAddTask: (description: string) => Promise<void>;
 }
 
 export function TaskForm({ onAddTask }: TaskFormProps) {
   const [description, setDescription] = useState('');
+  const [isAdding, setIsAdding] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (description.trim()) {
-      onAddTask(description.trim());
+      setIsAdding(true);
+      await onAddTask(description.trim());
       setDescription('');
+      setIsAdding(false);
     }
   };
 
@@ -32,10 +35,11 @@ export function TaskForm({ onAddTask }: TaskFormProps) {
             placeholder="Add a new task or reminder..."
             className="flex-1"
             aria-label="New task description"
+            disabled={isAdding}
           />
-          <Button type="submit" aria-label="Add task">
+          <Button type="submit" aria-label="Add task" disabled={isAdding || !description.trim()}>
             <Plus className="h-4 w-4 mr-2" />
-            Add Task
+            {isAdding ? 'Adding...' : 'Add Task'}
           </Button>
         </form>
       </CardContent>

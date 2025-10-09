@@ -16,11 +16,12 @@ interface TaskListProps {
   onUpdateTask: (id: string, updates: Partial<Task>) => void;
   onDeleteTask: (id: string) => void;
   onSetTasks: (tasks: Task[]) => void;
+  loading: boolean;
 }
 
 type FilterValue = TaskStatus | 'all';
 
-export function TaskList({ tasks, onUpdateTask, onDeleteTask, onSetTasks }: TaskListProps) {
+export function TaskList({ tasks, onUpdateTask, onDeleteTask, onSetTasks, loading }: TaskListProps) {
   const [filter, setFilter] = useState<FilterValue>('all');
   const [isPending, startTransition] = useTransition();
   const { toast } = useToast();
@@ -85,15 +86,38 @@ export function TaskList({ tasks, onUpdateTask, onDeleteTask, onSetTasks }: Task
   }, [tasks, filter]);
 
   const sortedTasks = useMemo(() => {
-    return [...filteredTasks].sort((a, b) => {
+    const tasksToSort = [...filteredTasks];
+    
+    // Convert Firestore Timestamp to number if needed
+    const getCreatedAt = (task: Task) => {
+        if (task.createdAt && typeof task.createdAt === 'object' && 'seconds' in task.createdAt) {
+            // It's a Firestore Timestamp
+            return (task.createdAt as any).toMillis();
+        }
+        return task.createdAt as number;
+    };
+
+    return tasksToSort.sort((a, b) => {
       if (a.priority && b.priority) {
         return a.priority - b.priority;
       }
       if (a.priority) return -1;
       if (b.priority) return 1;
-      return b.createdAt - a.createdAt;
+
+      const aCreatedAt = getCreatedAt(a);
+      const bCreatedAt = getCreatedAt(b);
+
+      return bCreatedAt - aCreatedAt;
     });
   }, [filteredTasks]);
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center p-12">
+        <Loader className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
