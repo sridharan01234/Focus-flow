@@ -72,8 +72,16 @@ export default function Home() {
     const provider = new GoogleAuthProvider();
     try {
       await signInWithPopup(auth, provider);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error signing in with Google', error);
+      // More specific error handling
+      if (error.code === 'auth/operation-not-allowed') {
+        alert('Google Sign-In is not enabled. Please enable it in Firebase Console.');
+      } else if (error.code === 'auth/popup-closed-by-user') {
+        console.log('Sign-in popup was closed by user');
+      } else {
+        alert('Sign-in failed. Please try again.');
+      }
     }
   };
 
@@ -88,7 +96,7 @@ export default function Home() {
 
   return (
     <div className="flex flex-col min-h-screen bg-background text-foreground">
-      <AppHeader user={user} onSignOut={handleSignOut} />
+      <AppHeader user={user || null} onSignOut={handleSignOut} />
       <main className="flex-1 container mx-auto px-4 md:px-6 py-8">
         {user ? (
           <div className="max-w-3xl mx-auto flex flex-col gap-8">
