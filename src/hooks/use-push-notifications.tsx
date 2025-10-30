@@ -175,15 +175,26 @@ export function usePushNotifications(userId: string | null) {
 
   const saveFCMToken = async (userId: string, token: string) => {
     try {
-      await fetch('/api/fcm-token', {
+      console.log('💾 Saving FCM token for user:', userId);
+      const response = await fetch('/api/fcm-token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, token }),
       });
+      const result = await response.json();
+      console.log('✅ FCM token saved:', result);
     } catch (error) {
-      console.error('Error saving FCM token:', error);
+      console.error('❌ Error saving FCM token:', error);
     }
   };
+
+  // Effect to save token when user signs in (if we already have a token)
+  useEffect(() => {
+    if (userId && fcmToken) {
+      console.log('👤 User signed in, saving existing FCM token...');
+      saveFCMToken(userId, fcmToken);
+    }
+  }, [userId, fcmToken]);
 
   return {
     fcmToken,
