@@ -32,6 +32,13 @@ export function usePushNotifications(userId: string | null) {
     }
 
     setNotificationPermission(Notification.permission);
+    
+    console.log('📱 Push Notifications Hook Initialized:', {
+      userId,
+      permission: Notification.permission,
+      isIOS: ios,
+      needsHTTPS: ios && !isHTTPS,
+    });
   }, []);
 
   const requestPermission = async () => {
@@ -141,12 +148,15 @@ export function usePushNotifications(userId: string | null) {
         });
 
         if (currentToken) {
-          console.log('FCM Token:', currentToken);
+          console.log('✅ FCM Token received:', currentToken);
           setFcmToken(currentToken);
           
           // Save token to database
           if (userId) {
+            console.log('💾 Saving token for userId:', userId);
             await saveFCMToken(userId, currentToken);
+          } else {
+            console.warn('⚠️ No userId available yet. Token will be saved when user signs in.');
           }
 
           // Listen for foreground messages
@@ -191,8 +201,12 @@ export function usePushNotifications(userId: string | null) {
   // Effect to save token when user signs in (if we already have a token)
   useEffect(() => {
     if (userId && fcmToken) {
-      console.log('👤 User signed in, saving existing FCM token...');
+      console.log('👤 User signed in with existing token, saving to database...');
+      console.log('   User ID:', userId);
+      console.log('   Token:', fcmToken.substring(0, 20) + '...');
       saveFCMToken(userId, fcmToken);
+    } else if (userId && !fcmToken) {
+      console.log('👤 User signed in but no FCM token yet. Please click "Enable" to grant notification permission.');
     }
   }, [userId, fcmToken]);
 
