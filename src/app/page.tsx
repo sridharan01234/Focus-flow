@@ -55,54 +55,80 @@ export default function Home() {
     const justRedirected = sessionStorage.getItem('auth_redirect_pending');
     console.log('🔍 Auth redirect pending flag:', justRedirected);
     
-    getRedirectResult(auth)
-      .then((result) => {
-        setRedirectHandled(true);
-        
-        if (result) {
-          console.log('✅ ✅ ✅ Successfully signed in after redirect!');
-          console.log('✅ User email:', result.user.email);
-          console.log('✅ User ID:', result.user.uid);
-          console.log('✅ Display name:', result.user.displayName);
-          sessionStorage.removeItem('auth_redirect_pending');
-          // Force a reload to ensure the UI updates
-          window.location.reload();
-        } else {
-          console.log('ℹ️ No redirect result (normal page load or redirect already processed)');
+    // Add retry logic for network errors (common on iOS PWA)
+    const attemptGetRedirectResult = async (retries = 3, delay = 1000) => {
+      for (let i = 0; i < retries; i++) {
+        try {
+          console.log(`🔄 Attempt ${i + 1}/${retries} to get redirect result...`);
+          const result = await getRedirectResult(auth);
+          setRedirectHandled(true);
           
-          // If we were expecting a redirect result but didn't get one, there might be an issue
-          if (justRedirected) {
-            console.warn('⚠️ Expected redirect result but got null - checking current user...');
-            if (auth.currentUser) {
-              console.log('✅ User is actually signed in:', auth.currentUser.email);
-              sessionStorage.removeItem('auth_redirect_pending');
-            } else {
-              console.error('❌ Redirect completed but no user signed in');
-              sessionStorage.removeItem('auth_redirect_pending');
-              alert('Sign-in may have failed. Please try again.');
+          if (result) {
+            console.log('✅ ✅ ✅ Successfully signed in after redirect!');
+            console.log('✅ User email:', result.user.email);
+            console.log('✅ User ID:', result.user.uid);
+            console.log('✅ Display name:', result.user.displayName);
+            sessionStorage.removeItem('auth_redirect_pending');
+            // Force a reload to ensure the UI updates
+            window.location.reload();
+            return;
+          } else {
+            console.log('ℹ️ No redirect result (normal page load or redirect already processed)');
+            
+            // If we were expecting a redirect result but didn't get one, there might be an issue
+            if (justRedirected) {
+              console.warn('⚠️ Expected redirect result but got null - checking current user...');
+              if (auth.currentUser) {
+                console.log('✅ User is actually signed in:', auth.currentUser.email);
+                sessionStorage.removeItem('auth_redirect_pending');
+                return;
+              } else if (i < retries - 1) {
+                console.log(`⏳ Waiting ${delay}ms before retry...`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+                continue;
+              } else {
+                console.error('❌ Redirect completed but no user signed in after all retries');
+                sessionStorage.removeItem('auth_redirect_pending');
+                alert('Sign-in failed. Please check your internet connection and try again.');
+                return;
+              }
             }
+            
+            console.log('🔍 Checking localStorage for existing auth...');
+            const keys = Object.keys(localStorage).filter(key => key.includes('firebase'));
+            console.log('🔍 Firebase localStorage keys:', keys.length, 'keys found');
+            if (keys.length > 0) {
+              console.log('🔍 Sample keys:', keys.slice(0, 3));
+            }
+            return;
           }
+        } catch (error: any) {
+          console.error(`❌ Attempt ${i + 1}/${retries} failed:`, error.code);
           
-          console.log('🔍 Checking localStorage for existing auth...');
-          const keys = Object.keys(localStorage).filter(key => key.includes('firebase'));
-          console.log('🔍 Firebase localStorage keys:', keys.length, 'keys found');
-          if (keys.length > 0) {
-            console.log('🔍 Sample keys:', keys.slice(0, 3));
+          if (error.code === 'auth/network-request-failed' && i < retries - 1) {
+            console.log(`⏳ Network error, waiting ${delay}ms before retry...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            continue;
+          } else {
+            setRedirectHandled(true);
+            sessionStorage.removeItem('auth_redirect_pending');
+            console.error('❌ ❌ ❌ Error handling redirect result!');
+            console.error('❌ Error code:', error.code);
+            console.error('❌ Error message:', error.message);
+            console.error('❌ Full error:', error);
+            
+            if (error.code === 'auth/network-request-failed') {
+              alert('Network error. Please check your internet connection and try again.\n\nIf you\'re in a PWA, try reopening from your Home Screen.');
+            } else if (error.code !== 'auth/popup-closed-by-user' && error.code !== 'auth/cancelled-popup-request') {
+              alert(`Sign-in failed: ${error.message}\nError code: ${error.code}`);
+            }
+            return;
           }
         }
-      })
-      .catch((error) => {
-        setRedirectHandled(true);
-        sessionStorage.removeItem('auth_redirect_pending');
-        console.error('❌ ❌ ❌ Error handling redirect result!');
-        console.error('❌ Error code:', error.code);
-        console.error('❌ Error message:', error.message);
-        console.error('❌ Full error:', error);
-        
-        if (error.code !== 'auth/popup-closed-by-user' && error.code !== 'auth/cancelled-popup-request') {
-          alert(`Sign-in failed: ${error.message}\nError code: ${error.code}`);
-        }
-      });
+      }
+    };
+    
+    attemptGetRedirectResult();
   }, [redirectHandled]);
 
   const [tasksSnapshot, loading, error] = useCollection(
@@ -215,30 +241,39 @@ export default function Home() {
       
       console.log('📱 Device mode:', { isStandalone, isIOS });
       
-      // Try popup first (works better with third-party cookies),
-      // fallback to redirect if popup fails (iOS PWA blocks popups)
-      try {
-        console.log('🔑 Attempting popup sign-in...');
-        const result = await signInWithPopup(auth, provider);
-        console.log('✅ ✅ ✅ Popup sign-in successful!');
-        console.log('✅ User email:', result.user.email);
-        console.log('✅ User ID:', result.user.uid);
-        // No need to reload, auth state will update automatically
-      } catch (popupError: any) {
-        console.log('⚠️ Popup failed, trying redirect...', popupError.code);
-        
-        // If popup was blocked or closed, try redirect
-        if (popupError.code === 'auth/popup-blocked' || 
-            popupError.code === 'auth/popup-closed-by-user' ||
-            popupError.code === 'auth/cancelled-popup-request') {
+      // On iOS PWA, skip popup and go straight to redirect (popups are always blocked)
+      if (isStandalone && isIOS) {
+        console.log('📱 iOS PWA detected - using redirect flow directly');
+        sessionStorage.setItem('auth_redirect_pending', 'true');
+        sessionStorage.setItem('auth_redirect_timestamp', Date.now().toString());
+        await signInWithRedirect(auth, provider);
+        console.log('⚠️ If you see this, redirect did not happen!');
+      } else {
+        // Try popup first (works better with third-party cookies on desktop)
+        try {
+          console.log('🔑 Attempting popup sign-in...');
+          const result = await signInWithPopup(auth, provider);
+          console.log('✅ ✅ ✅ Popup sign-in successful!');
+          console.log('✅ User email:', result.user.email);
+          console.log('✅ User ID:', result.user.uid);
+          // No need to reload, auth state will update automatically
+        } catch (popupError: any) {
+          console.log('⚠️ Popup failed, trying redirect...', popupError.code);
           
-          console.log('🔑 Using redirect sign-in instead...');
-          sessionStorage.setItem('auth_redirect_pending', 'true');
-          await signInWithRedirect(auth, provider);
-          console.log('⚠️ If you see this, redirect did not happen!');
-        } else {
-          // Re-throw if it's a different error
-          throw popupError;
+          // If popup was blocked or closed, try redirect
+          if (popupError.code === 'auth/popup-blocked' || 
+              popupError.code === 'auth/popup-closed-by-user' ||
+              popupError.code === 'auth/cancelled-popup-request') {
+            
+            console.log('🔑 Using redirect sign-in instead...');
+            sessionStorage.setItem('auth_redirect_pending', 'true');
+            sessionStorage.setItem('auth_redirect_timestamp', Date.now().toString());
+            await signInWithRedirect(auth, provider);
+            console.log('⚠️ If you see this, redirect did not happen!');
+          } else {
+            // Re-throw if it's a different error
+            throw popupError;
+          }
         }
       }
       
