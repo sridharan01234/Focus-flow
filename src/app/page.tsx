@@ -26,6 +26,7 @@ import { Toaster } from '@/components/ui/toaster';
 import { Bell } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { isIOSPWA, showIOSAuthInstructions, logAuthEnvironment, waitForAuthReady } from '@/lib/auth-helpers';
+import { signInWithGoogleIdentityServices, waitForGoogleIdentityServices } from '@/lib/google-identity-services';
 
 export default function Home() {
   const { user, loading: userLoading } = useUser();
@@ -264,12 +265,6 @@ export default function Home() {
 
   const handleSignIn = async () => {
     const auth = getAuth();
-    const provider = new GoogleAuthProvider();
-    
-    // Add custom parameters to ensure fresh sign-in
-    provider.setCustomParameters({
-      prompt: 'select_account'
-    });
     
     try {
       console.log('🔑 Starting Google Sign-In flow...');
@@ -279,30 +274,65 @@ export default function Home() {
       await setPersistence(auth, browserLocalPersistence);
       console.log('✅ Persistence set to browserLocalPersistence');
       
-      // iOS PWA WORKAROUND: Use redirect ONLY (popup doesn't work reliably)
+      // iOS PWA: Use Google Identity Services (bypasses third-party cookie restrictions)
       if (isIOSPWA()) {
-        console.log('🔑 iOS PWA detected - using redirect flow with external Safari');
+        console.log('🔑 iOS PWA detected - using Google Identity Services (GIS)');
+        console.log('📱 GIS bypasses third-party cookie restrictions');
         
-        // Show instructions to user
-        const proceed = showIOSAuthInstructions();
-        
-        if (!proceed) {
-          console.log('ℹ️ User cancelled sign-in');
+        try {
+          // Wait for GIS to load
+          const gisLoaded = await waitForGoogleIdentityServices(5000);
+          
+          if (!gisLoaded) {
+            throw new Error('Google Identity Services failed to load. Please refresh the page.');
+          }
+          
+          console.log('✅ Google Identity Services ready');
+          
+          // Use GIS for sign-in (works on iOS PWA)
+          await signInWithGoogleIdentityServices();
+          
+          console.log('✅ ✅ ✅ Sign-in successful with GIS!');
+          alert('Welcome! You are now signed in.');
+          
+          // Reload to update UI
+          window.location.reload();
+          return;
+          
+        } catch (gisError: any) {
+          console.error('❌ GIS sign-in failed:', gisError.message);
+          
+          // Check if it's a configuration error
+          if (gisError.message.includes('Client ID not configured')) {
+            alert(
+              'Google Sign-In is not fully configured.\n\n' +
+              'Please add NEXT_PUBLIC_GOOGLE_CLIENT_ID to your .env.local file.\n\n' +
+              'Find it in: Firebase Console → Authentication → Sign-in method → Google → Web SDK configuration'
+            );
+            return;
+          }
+          
+          // Show user-friendly error
+          alert(
+            '📱 iOS PWA Sign-In Issue\n\n' +
+            'Unable to complete sign-in with Google Identity Services.\n\n' +
+            'Troubleshooting:\n' +
+            '• Check your internet connection\n' +
+            '• Try refreshing the page\n' +
+            '• Remove and reinstall the app\n\n' +
+            `Technical error: ${gisError.message}`
+          );
           return;
         }
-        
-        // Mark that we're starting a redirect
-        sessionStorage.setItem('auth_redirect_pending', 'true');
-        sessionStorage.setItem('auth_redirect_time', Date.now().toString());
-        
-        // Use redirect which will open in Safari on iOS PWA
-        await signInWithRedirect(auth, provider);
-        
-        // This line won't be reached as the browser redirects
-        return;
       }
       
-      // Non-iOS PWA: Try popup first, fallback to redirect
+      // Non-iOS PWA: Use standard Firebase Auth
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({
+        prompt: 'select_account'
+      });
+      
+      // Try popup first, fallback to redirect
       try {
         console.log('🔑 Attempting sign-in with popup...');
         const result = await signInWithPopup(auth, provider);
@@ -338,11 +368,7 @@ export default function Home() {
       } else if (error.code === 'auth/unauthorized-domain') {
         alert(`This domain is not authorized. Please add "${window.location.hostname}" to Firebase Console authorized domains.`);
       } else if (error.code === 'auth/network-request-failed') {
-        if (isIOSPWA()) {
-          alert('Network error on iOS.\n\nTroubleshooting:\n• Check internet connection\n• Complete sign-in in Safari before returning\n• Try removing and reinstalling the app');
-        } else {
-          alert('Network error. Please check your internet connection and try again.');
-        }
+        alert('Network error. Please check your internet connection and try again.');
       } else {
         alert(`Sign-in failed: ${error.message}\nError code: ${error.code}`);
       }

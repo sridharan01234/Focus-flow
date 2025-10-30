@@ -35,6 +35,8 @@ export default function RootLayout({
         {/* Allow cookies in iOS PWA standalone mode */}
         <meta httpEquiv="Content-Security-Policy" content="upgrade-insecure-requests" />
         <link rel="apple-touch-icon" href="/icon-192x192.png" />
+        {/* Google Identity Services - Required for iOS PWA auth */}
+        <script src="https://accounts.google.com/gsi/client" async defer></script>
       </head>
       <body className="font-body antialiased">
         <FirebaseClientProvider>
