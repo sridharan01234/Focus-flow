@@ -162,6 +162,38 @@ export function TaskCard({ task, onUpdateTask, onDeleteTask }: TaskCardProps) {
                 </Badge>
               </>
             )}
+            {task.deadline && (
+              <>
+                <Separator orientation="vertical" className="h-4" />
+                <Badge 
+                  variant={new Date(task.deadline) < new Date() && task.status !== 'completed' ? 'destructive' : 'outline'}
+                  className={cn(
+                    new Date(task.deadline) < new Date() && task.status !== 'completed' && 'animate-pulse'
+                  )}
+                >
+                  ⏰ Due: {new Date(task.deadline).toLocaleString()}
+                  {new Date(task.deadline) < new Date() && task.status !== 'completed' && (
+                    <span className="ml-1 font-bold">OVERDUE</span>
+                  )}
+                </Badge>
+              </>
+            )}
+            {task.estimatedDuration && (
+              <>
+                <Separator orientation="vertical" className="h-4" />
+                <Badge variant="secondary">
+                  ⏱️ {task.estimatedDuration} min
+                </Badge>
+              </>
+            )}
+            {task.aiSuggested && (
+              <>
+                <Separator orientation="vertical" className="h-4" />
+                <Badge variant="default" className="bg-purple-600">
+                  ✨ AI Suggested
+                </Badge>
+              </>
+            )}
           </div>
 
           {task.reason && (

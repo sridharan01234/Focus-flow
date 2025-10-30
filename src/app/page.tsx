@@ -27,6 +27,7 @@ import { Bell } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { isIOSPWA, logAuthEnvironment } from '@/lib/auth-helpers';
 import { signInWithGoogleIdentityServices, waitForGoogleIdentityServices } from '@/lib/google-identity-services';
+import { generateAISuggestions, getOverdueTasks } from '@/lib/ai-suggestions';
 
 export default function Home() {
   const { user, loading: userLoading } = useUser();
@@ -35,6 +36,7 @@ export default function Home() {
   const { notificationPermission, requestPermission, isSupported, isIOS, needsHTTPS, fcmToken } = usePushNotifications(user?.uid || null);
   const [showNotificationDebug, setShowNotificationDebug] = useState(false);
   const [authInProgress, setAuthInProgress] = useState(true);
+  const [loadingAI, setLoadingAI] = useState(false);
 
   useEffect(() => {
     logAuthEnvironment();
@@ -104,6 +106,31 @@ export default function Home() {
     };
   }, []);
 
+  // Check for overdue tasks periodically
+  useEffect(() => {
+    if (!user) return;
+    
+    const checkOverdue = async () => {
+      try {
+        await fetch('/api/check-overdue', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: user.uid })
+        });
+      } catch (error) {
+        console.error('Failed to check overdue tasks:', error);
+      }
+    };
+    
+    // Check immediately
+    checkOverdue();
+    
+    // Then check every 15 minutes
+    const interval = setInterval(checkOverdue, 15 * 60 * 1000);
+    
+    return () => clearInterval(interval);
+  }, [user]);
+
   const [tasksSnapshot, loading, error] = useCollection(
     user ? collection(db, 'users', user.uid, 'tasks') : null
   );
@@ -114,20 +141,22 @@ export default function Home() {
       ...(doc.data() as Omit<Task, 'id'>),
     })) || [];
 
-  const handleAddTask = async (description: string) => {
+  const handleAddTask = async (description: string, deadline?: string, estimatedDuration?: number) => {
     if (!user) return;
     const newTask: Omit<Task, 'id' | 'createdAt'> & { createdAt: any } = {
       description,
       status: 'active',
       userId: user.uid,
       createdAt: serverTimestamp(),
+      ...(deadline && { deadline }),
+      ...(estimatedDuration && { estimatedDuration }),
     };
     await addDoc(collection(db, 'users', user.uid, 'tasks'), newTask);
     
     try {
       await sendNotification(user.uid, 'task-added', {
         title: 'Task Added',
-        description: `Added: ${description}`,
+        description: `Added: ${description}${deadline ? ` (Due: ${new Date(deadline).toLocaleString()})` : ''}`,
         type: 'success',
       });
     } catch (error) {
@@ -315,6 +344,60 @@ export default function Home() {
     }
   };
 
+  const handleGetAISuggestions = async () => {
+    if (!user) return;
+    setLoadingAI(true);
+    
+    try {
+      console.log('🤖 Getting AI suggestions...');
+      const suggestions = await generateAISuggestions(tasks, new Date());
+      
+      if (suggestions.length === 0) {
+        alert('No new suggestions at the moment. Check back later!');
+        setLoadingAI(false);
+        return;
+      }
+      
+      // Add AI suggested tasks
+      for (const suggestion of suggestions) {
+        const newTask = {
+          description: suggestion.description,
+          status: 'active' as const,
+          userId: user.uid,
+          createdAt: serverTimestamp(),
+          deadline: suggestion.deadline,
+          estimatedDuration: suggestion.estimatedDuration,
+          priority: suggestion.priority,
+          scheduledTime: suggestion.scheduledTime,
+          reason: suggestion.reason,
+          aiSuggested: true,
+          aiPriority: suggestion.priority
+        };
+        
+        await addDoc(collection(db, 'users', user.uid, 'tasks'), newTask);
+      }
+      
+      // Send notification
+      try {
+        await sendNotification(user.uid, 'ai-suggestions', {
+          title: '🤖 AI Suggestions Added',
+          description: `${suggestions.length} new task suggestions based on your schedule`,
+          type: 'success',
+        });
+      } catch (error) {
+        console.error('Failed to send notification:', error);
+      }
+      
+      alert(`✅ Added ${suggestions.length} AI-suggested tasks!\n\nCheck your task list for smart recommendations based on the current time and your existing tasks.`);
+      
+    } catch (error: any) {
+      console.error('❌ AI suggestions error:', error);
+      alert('Failed to get AI suggestions. Please try again.');
+    } finally {
+      setLoadingAI(false);
+    }
+  };
+
   const handleSignOut = async () => {
     const auth = getAuth();
     await signOut(auth);
@@ -441,6 +524,24 @@ export default function Home() {
                 </AlertDescription>
               </Alert>
             )}
+
+            {/* AI Suggestions Button */}
+            <div className="p-4 bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-950 dark:to-blue-950 rounded-lg border border-purple-200 dark:border-purple-800">
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <h3 className="font-semibold text-purple-900 dark:text-purple-100">✨ AI Task Suggestions</h3>
+                  <p className="text-sm text-purple-700 dark:text-purple-300">Get smart recommendations based on time and context</p>
+                </div>
+                <Button
+                  onClick={handleGetAISuggestions}
+                  disabled={loadingAI}
+                  className="bg-purple-600 hover:bg-purple-700"
+                >
+                  {loadingAI ? '🤖 Thinking...' : '✨ Get Suggestions'}
+                </Button>
+              </div>
+            </div>
+
             <TaskForm onAddTask={handleAddTask} />
             <TaskList
               tasks={tasks}

@@ -9,6 +9,11 @@ export interface Task {
   createdAt: FieldValue | number;
   priority?: number;
   scheduledTime?: string;
+  deadline?: string; // ISO date string
+  estimatedDuration?: number; // minutes
   reason?: string;
   userId: string;
+  aiSuggested?: boolean;
+  aiPriority?: number;
+  lastMissingNotification?: number; // timestamp
 }
