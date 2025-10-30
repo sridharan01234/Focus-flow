@@ -19,10 +19,14 @@ import {
 import { useCollection } from 'react-firebase-hooks/firestore';
 import { Button } from '@/components/ui/button';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
+import { useNotifications } from '@/hooks/use-notifications';
+import { sendNotification } from '@/lib/notifications';
+import { Toaster } from '@/components/ui/toaster';
 
 export default function Home() {
   const { user, loading: userLoading } = useUser();
   const db = getFirestore();
+  const { isConnected } = useNotifications(user?.uid || null);
 
   const [tasksSnapshot, loading, error] = useCollection(
     user ? collection(db, 'users', user.uid, 'tasks') : null
@@ -43,18 +47,51 @@ export default function Home() {
       createdAt: serverTimestamp(),
     };
     await addDoc(collection(db, 'users', user.uid, 'tasks'), newTask);
+    
+    // Send notification
+    try {
+      await sendNotification(user.uid, 'task-added', {
+        title: 'Task Added',
+        description: `Added: ${description}`,
+        type: 'success',
+      });
+    } catch (error) {
+      console.error('Failed to send notification:', error);
+    }
   };
 
   const handleUpdateTask = async (id: string, updates: Partial<Task>) => {
     if (!user) return;
     const taskRef = doc(db, 'users', user.uid, 'tasks', id);
     await updateDoc(taskRef, updates);
+    
+    // Send notification
+    try {
+      await sendNotification(user.uid, 'task-updated', {
+        title: 'Task Updated',
+        description: updates.status ? `Status changed to ${updates.status}` : 'Task details updated',
+        type: 'info',
+      });
+    } catch (error) {
+      console.error('Failed to send notification:', error);
+    }
   };
 
   const handleDeleteTask = async (id: string) => {
     if (!user) return;
     const taskRef = doc(db, 'users', user.uid, 'tasks', id);
     await deleteDoc(taskRef);
+    
+    // Send notification
+    try {
+      await sendNotification(user.uid, 'task-deleted', {
+        title: 'Task Deleted',
+        description: 'Task removed successfully',
+        type: 'info',
+      });
+    } catch (error) {
+      console.error('Failed to send notification:', error);
+    }
   };
 
   const handleSetTasks = async (newTasks: Task[]) => {
@@ -65,6 +102,17 @@ export default function Home() {
       batch.set(taskRef, task, { merge: true });
     });
     await batch.commit();
+    
+    // Send notification for prioritization
+    try {
+      await sendNotification(user.uid, 'tasks-prioritized', {
+        title: 'Tasks Prioritized',
+        description: 'Your tasks have been intelligently organized',
+        type: 'success',
+      });
+    } catch (error) {
+      console.error('Failed to send notification:', error);
+    }
   };
 
   const handleSignIn = async () => {
@@ -117,6 +165,7 @@ export default function Home() {
           </div>
         )}
       </main>
+      <Toaster />
     </div>
   );
 }

@@ -22,6 +22,7 @@ const TaskInputSchema = z.object({
     })
   ).describe('A list of tasks to prioritize and schedule.'),
   userBehaviorProfile: z.string().optional().describe('A description of the user behavior patterns and preferences.'),
+  currentDateTime: z.string().describe('The current date and time in ISO format for reference.'),
 });
 export type TaskInput = z.infer<typeof TaskInputSchema>;
 
@@ -46,6 +47,10 @@ const prompt = ai.definePrompt({
   input: {schema: TaskInputSchema},
   output: {schema: TaskOutputSchema},
   prompt: `You are an AI assistant designed to prioritize and schedule tasks for users with ADHD.
+
+  Current Date and Time: {{currentDateTime}}
+  
+  IMPORTANT: Use the current date and time above as your reference point for all scheduling and prioritization decisions. When suggesting scheduled times, ensure they are in the future relative to this current time.
 
   Given the following tasks, context, and user behavior, determine the priority (1 being highest) and a suggested schedule time for each task. Explain your reasoning.
 

@@ -44,6 +44,7 @@ export function TaskList({ tasks, onUpdateTask, onDeleteTask, onSetTasks, loadin
             description,
           })),
           userBehaviorProfile: 'User tends to procrastinate on complex tasks. Prefers to tackle smaller items in the morning.',
+          currentDateTime: new Date().toISOString(),
         };
         const result = await prioritizeAndScheduleTasks(taskInput);
 
