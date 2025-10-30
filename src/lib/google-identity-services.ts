@@ -170,6 +170,7 @@ export function showOneTap(
 /**
  * Sign in with Google using Identity Services
  * This is the iOS PWA-compatible method
+ * IMPROVED: Creates a button programmatically for better reliability
  */
 export async function signInWithGoogleIdentityServices(): Promise<void> {
   const clientId = getGoogleClientId();
@@ -181,12 +182,31 @@ export async function signInWithGoogleIdentityServices(): Promise<void> {
     );
   }
   
+  if (!window.google?.accounts?.id) {
+    throw new Error('Google Identity Services not loaded');
+  }
+  
   return new Promise((resolve, reject) => {
-    // Initialize GIS
+    console.log('🔧 Initializing GIS for iOS PWA...');
+    
+    // Create a hidden button container
+    const buttonContainer = document.createElement('div');
+    buttonContainer.id = 'gis-signin-button';
+    buttonContainer.style.position = 'fixed';
+    buttonContainer.style.top = '-9999px';
+    buttonContainer.style.left = '-9999px';
+    document.body.appendChild(buttonContainer);
+    
+    // Initialize GIS with callback
     const initialized = initializeGoogleIdentity(
       async (idToken: string) => {
         try {
           console.log('🔄 Exchanging Google ID token with Firebase...');
+          
+          // Clean up the button
+          if (buttonContainer.parentNode) {
+            buttonContainer.parentNode.removeChild(buttonContainer);
+          }
           
           // Create Firebase credential from Google ID token
           const credential = GoogleAuthProvider.credential(idToken);
@@ -201,33 +221,81 @@ export async function signInWithGoogleIdentityServices(): Promise<void> {
           resolve();
         } catch (error: any) {
           console.error('❌ Failed to sign in with Firebase:', error);
+          // Clean up
+          if (buttonContainer.parentNode) {
+            buttonContainer.parentNode.removeChild(buttonContainer);
+          }
           reject(error);
         }
       },
       (error: Error) => {
         console.error('❌ Google Identity Services error:', error);
+        // Clean up
+        if (buttonContainer.parentNode) {
+          buttonContainer.parentNode.removeChild(buttonContainer);
+        }
         reject(error);
       }
     );
     
     if (!initialized) {
+      if (buttonContainer.parentNode) {
+        buttonContainer.parentNode.removeChild(buttonContainer);
+      }
       reject(new Error('Failed to initialize Google Identity Services'));
       return;
     }
     
-    // Show One Tap prompt
-    if (window.google?.accounts?.id) {
-      window.google.accounts.id.prompt((notification: any) => {
-        if (notification.isNotDisplayed()) {
-          const reason = notification.getNotDisplayedReason();
-          console.log('ℹ️ One Tap not displayed:', reason);
-          
-          // If One Tap doesn't show, reject so fallback can be used
-          if (reason === 'suppressed_by_user' || reason === 'unregistered_origin') {
-            reject(new Error(`One Tap unavailable: ${reason}`));
+    // Render the button (this will trigger the sign-in flow)
+    try {
+      console.log('🔘 Rendering GIS button...');
+      if (!window.google?.accounts?.id) {
+        throw new Error('GIS not available after initialization');
+      }
+      
+      window.google.accounts.id.renderButton(buttonContainer, {
+        type: 'standard',
+        theme: 'outline',
+        size: 'large',
+        text: 'signin_with',
+        shape: 'rectangular',
+      });
+      
+      // Programmatically click the button
+      setTimeout(() => {
+        const button = buttonContainer.querySelector('div[role="button"]');
+        if (button) {
+          console.log('🖱️ Auto-clicking GIS button...');
+          (button as HTMLElement).click();
+        } else {
+          console.warn('⚠️ GIS button not found, trying prompt...');
+          // Fallback to One Tap
+          if (window.google?.accounts?.id) {
+            window.google.accounts.id.prompt((notification: any) => {
+              if (notification.isNotDisplayed()) {
+                const reason = notification.getNotDisplayedReason();
+                console.error('❌ One Tap not displayed:', reason);
+                if (buttonContainer.parentNode) {
+                  buttonContainer.parentNode.removeChild(buttonContainer);
+                }
+                reject(new Error(`One Tap unavailable: ${reason}`));
+              }
+            });
+          } else {
+            if (buttonContainer.parentNode) {
+              buttonContainer.parentNode.removeChild(buttonContainer);
+            }
+            reject(new Error('GIS no longer available'));
           }
         }
-      });
+      }, 500);
+      
+    } catch (error) {
+      console.error('❌ Failed to render GIS button:', error);
+      if (buttonContainer.parentNode) {
+        buttonContainer.parentNode.removeChild(buttonContainer);
+      }
+      reject(error);
     }
   });
 }

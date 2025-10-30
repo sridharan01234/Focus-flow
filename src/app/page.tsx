@@ -199,56 +199,68 @@ export default function Home() {
       console.log(`✅ Persistence set to ${isIOSPWA() ? 'indexedDB' : 'browserLocal'}`);
 
       if (isIOSPWA()) {
-        console.log('🔑 iOS PWA detected, using Google Identity Services...');
+        console.log('🔑 iOS PWA detected - GIS ONLY mode');
         
-        // Wait for GIS to load (script should be in layout)
-        const gisReady = await waitForGoogleIdentityServices(5000);
+        // For iOS PWA, we ONLY use GIS - no redirect fallback
+        // Wait longer for GIS to load
+        const gisReady = await waitForGoogleIdentityServices(10000);
         
-        if (gisReady) {
-          try {
-            console.log('✅ GIS ready, initiating sign-in...');
-            await signInWithGoogleIdentityServices();
-            console.log('✅ Successfully signed in with GIS!');
-            setAuthInProgress(false);
-            return;
-          } catch (gisError: any) {
-            console.error('❌ GIS sign-in failed:', gisError.message);
-            console.log('🔄 Falling back to redirect flow...');
-            // Fall through to redirect flow
-          }
-        } else {
-          console.warn('⚠️ GIS not available, using redirect flow...');
+        if (!gisReady) {
+          console.error('❌ GIS not loaded after 10 seconds');
+          alert('⚠️ Authentication service not ready.\n\nPlease:\n1. Ensure you have internet connection\n2. Close and reopen the app\n3. Try again\n\nIf the issue persists, try removing and re-adding the app to your home screen.');
+          setAuthInProgress(false);
+          return;
         }
         
-        // Fallback to redirect if GIS fails or unavailable
-        console.log('🔑 Using redirect flow as fallback...');
-        sessionStorage.setItem('auth_redirect_pending', 'true');
-        
-        // Set a safety timeout - if redirect doesn't happen in 3 seconds, reset
-        setTimeout(() => {
-          if (sessionStorage.getItem('auth_redirect_pending')) {
-            console.warn('⚠️ Redirect did not start, resetting...');
-            sessionStorage.removeItem('auth_redirect_pending');
+        try {
+          console.log('✅ GIS ready, initiating sign-in...');
+          await signInWithGoogleIdentityServices();
+          console.log('✅ Successfully signed in with GIS!');
+          setAuthInProgress(false);
+          return;
+        } catch (gisError: any) {
+          console.error('❌ GIS sign-in error:', gisError);
+          
+          // More specific error handling
+          if (gisError.message && gisError.message.includes('popup_closed_by_user')) {
+            console.log('ℹ️ User closed the sign-in popup');
             setAuthInProgress(false);
+            return;
           }
-        }, 3000);
-        
-        await signInWithRedirect(auth, provider);
+          
+          if (gisError.message && gisError.message.includes('Client ID')) {
+            alert('❌ Configuration Error\n\nThe Google Client ID is not properly configured. Please contact the app administrator.');
+            setAuthInProgress(false);
+            return;
+          }
+          
+          // Generic GIS error
+          alert(`⚠️ Sign-in failed: ${gisError.message || 'Unknown error'}\n\nPlease try again. If the issue persists:\n1. Check your internet connection\n2. Try removing and re-adding the app to home screen`);
+          setAuthInProgress(false);
+          return;
+        }
       } else {
+        // Non-iOS PWA: use popup
         console.log('🔑 Attempting sign-in with popup...');
-        await signInWithPopup(auth, provider);
-        setAuthInProgress(false);
+        try {
+          await signInWithPopup(auth, provider);
+          setAuthInProgress(false);
+        } catch (popupError: any) {
+          if (popupError.code === 'auth/popup-blocked' || popupError.code === 'auth/cancelled-popup-request') {
+            console.log('🔑 Popup blocked/cancelled, falling back to redirect...');
+            sessionStorage.setItem('auth_redirect_pending', 'true');
+            await signInWithRedirect(auth, provider);
+          } else {
+            throw popupError;
+          }
+        }
       }
     } catch (error: any) {
       console.error('❌ Sign-in error:', error.code, error.message);
-      sessionStorage.removeItem('auth_redirect_pending'); // Clean up on any error
+      sessionStorage.removeItem('auth_redirect_pending');
       
-      if (error.code === 'auth/popup-blocked' || error.code === 'auth/cancelled-popup-request') {
-        console.log('🔑 Popup blocked/cancelled, falling back to redirect...');
-        sessionStorage.setItem('auth_redirect_pending', 'true');
-        await signInWithRedirect(auth, provider);
-      } else if (error.code === 'auth/network-request-failed') {
-        alert('⚠️ Network error during sign-in.\n\nFor iOS PWAs, this is a known issue. The app will try an alternative method next time.\n\nTip: Ensure you have a stable internet connection.');
+      if (error.code === 'auth/network-request-failed') {
+        alert('⚠️ Network error during sign-in.\n\nPlease check your internet connection and try again.');
         setAuthInProgress(false);
       } else {
         alert(`Sign-in failed: ${error.message}`);
