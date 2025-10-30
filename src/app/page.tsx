@@ -38,42 +38,45 @@ export default function Home() {
   useEffect(() => {
     logAuthEnvironment();
     const auth = getAuth();
-    const isiOSPWA = isIOSPWA();
 
-    const handleRedirect = async () => {
-      console.log('🔍 Checking for redirect result...');
+    const initializeAuth = async () => {
+      console.log('� Initializing Auth...');
+      const isiOSPWA = isIOSPWA();
+      
       try {
-        // Use indexedDB persistence for iOS PWA
-        if (isiOSPWA) {
-          await setPersistence(auth, indexedDBLocalPersistence);
-          console.log('✅ Persistence set to indexedDBLocalPersistence for iOS PWA');
-        }
+        // Set persistence FIRST. This is critical for iOS PWA.
+        const persistence = isiOSPWA ? indexedDBLocalPersistence : browserLocalPersistence;
+        await setPersistence(auth, persistence);
+        console.log(`✅ Persistence set to ${isiOSPWA ? 'indexedDB' : 'browserLocal'}`);
 
-        const result = await getRedirectResult(auth);
-        if (result) {
-          console.log('✅ Successfully signed in after redirect!', result.user.email);
-          sessionStorage.removeItem('auth_redirect_pending');
-          // No need to reload, useUser hook will update the state
-        } else {
-          console.log('ℹ️ No redirect result.');
+        // Now, check for redirect result.
+        if (sessionStorage.getItem('auth_redirect_pending')) {
+          console.log('🔍 Checking for redirect result...');
+          const result = await getRedirectResult(auth);
+          sessionStorage.removeItem('auth_redirect_pending'); // Remove this immediately
+          
+          if (result) {
+            console.log('✅ Successfully signed in after redirect!', result.user.email);
+            // The useUser hook will handle the user state update.
+          } else {
+            console.log('ℹ️ No redirect result found. The user might have just landed on the page.');
+          }
         }
       } catch (error: any) {
-        console.error('❌ Error handling redirect result:', error.code, error.message);
+        console.error('❌ Critical Auth Error during initialization:', error.code, error.message);
         if (error.code === 'auth/network-request-failed') {
-          alert('Network error during sign-in. Please check your connection and try again.');
+          alert('A network error occurred during sign-in. Please check your connection and try again.');
         }
-      } finally {
-        setAuthInProgress(false);
+        // Ensure we always remove the pending flag on error
         sessionStorage.removeItem('auth_redirect_pending');
+      } finally {
+        // Regardless of outcome, auth initialization is complete.
+        console.log('🏁 Auth initialization finished.');
+        setAuthInProgress(false);
       }
     };
 
-    // Only run this if we are expecting a redirect
-    if (sessionStorage.getItem('auth_redirect_pending')) {
-      handleRedirect();
-    } else {
-      setAuthInProgress(false);
-    }
+    initializeAuth();
   }, []);
 
   const [tasksSnapshot, loading, error] = useCollection(
