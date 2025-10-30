@@ -12,7 +12,7 @@ const firebaseConfig = {
   "apiKey": "AIzaSyCZII37Vm4rlEKqBUBwrQMSJL7vE8qEjMA",
   // CRITICAL FIX: Use Vercel domain to avoid third-party cookie blocking
   // See: https://firebase.google.com/docs/auth/web/redirect-best-practices
-  "authDomain": process.env.NEXT_PUBLIC_VERCEL_URL || "focus-flow-seven-orpin.vercel.app",
+  "authDomain": "focus-flow-seven-orpin.vercel.app",
   "measurementId": "",
   "messagingSenderId": "533733919681"
 };
