@@ -18,7 +18,7 @@ import {
 } from 'firebase/firestore';
 import { useCollection } from 'react-firebase-hooks/firestore';
 import { Button } from '@/components/ui/button';
-import { getAuth, GoogleAuthProvider, signInWithRedirect, getRedirectResult, signOut, setPersistence, browserLocalPersistence } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, signInWithRedirect, signInWithPopup, getRedirectResult, signOut, setPersistence, browserLocalPersistence } from 'firebase/auth';
 import { useNotifications } from '@/hooks/use-notifications';
 import { usePushNotifications } from '@/hooks/use-push-notifications';
 import { sendNotification } from '@/lib/notifications';
@@ -205,20 +205,43 @@ export default function Home() {
       console.log('🔑 Starting Google Sign-In flow...');
       console.log('🔑 Setting auth persistence to LOCAL...');
       
-      // CRITICAL: Set persistence BEFORE signInWithRedirect
+      // CRITICAL: Set persistence BEFORE sign-in
       await setPersistence(auth, browserLocalPersistence);
       console.log('✅ Persistence set to browserLocalPersistence');
       
-      // Set a flag so we know to expect a redirect result
-      sessionStorage.setItem('auth_redirect_pending', 'true');
-      console.log('✅ Redirect flag set');
+      // Detect if we're in standalone mode (PWA on iOS)
+      const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone;
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
       
-      console.log('🔑 Initiating redirect to Google...');
-      // Use signInWithRedirect for better mobile/PWA support (iOS Safari standalone mode blocks popups)
-      await signInWithRedirect(auth, provider);
+      console.log('📱 Device mode:', { isStandalone, isIOS });
       
-      // Note: Code after this line won't execute as page redirects immediately
-      console.log('⚠️ If you see this, redirect did not happen!');
+      // Try popup first (works better with third-party cookies),
+      // fallback to redirect if popup fails (iOS PWA blocks popups)
+      try {
+        console.log('🔑 Attempting popup sign-in...');
+        const result = await signInWithPopup(auth, provider);
+        console.log('✅ ✅ ✅ Popup sign-in successful!');
+        console.log('✅ User email:', result.user.email);
+        console.log('✅ User ID:', result.user.uid);
+        // No need to reload, auth state will update automatically
+      } catch (popupError: any) {
+        console.log('⚠️ Popup failed, trying redirect...', popupError.code);
+        
+        // If popup was blocked or closed, try redirect
+        if (popupError.code === 'auth/popup-blocked' || 
+            popupError.code === 'auth/popup-closed-by-user' ||
+            popupError.code === 'auth/cancelled-popup-request') {
+          
+          console.log('🔑 Using redirect sign-in instead...');
+          sessionStorage.setItem('auth_redirect_pending', 'true');
+          await signInWithRedirect(auth, provider);
+          console.log('⚠️ If you see this, redirect did not happen!');
+        } else {
+          // Re-throw if it's a different error
+          throw popupError;
+        }
+      }
+      
     } catch (error: any) {
       console.error('❌ ❌ ❌ Error signing in with Google!');
       console.error('❌ Error code:', error.code);

@@ -10,9 +10,8 @@ const firebaseConfig = {
   "projectId": "studio-2705179619-e376d",
   "appId": "1:533733919681:web:a57016c2cc55e6edf93d40",
   "apiKey": "AIzaSyCZII37Vm4rlEKqBUBwrQMSJL7vE8qEjMA",
-  // CRITICAL FIX: Use Vercel domain to avoid third-party cookie blocking
-  // See: https://firebase.google.com/docs/auth/web/redirect-best-practices
-  "authDomain": "focus-flow-seven-orpin.vercel.app",
+  // Keep default firebaseapp.com domain (has required auth handlers)
+  "authDomain": "studio-2705179619-e376d.firebaseapp.com",
   "measurementId": "",
   "messagingSenderId": "533733919681"
 };
