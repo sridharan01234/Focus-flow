@@ -215,12 +215,11 @@ export function usePushNotifications(userId: string | null) {
           }
 
           // Listen for foreground messages
+          // Note: We don't show a toast here because Pusher already handles in-app notifications
+          // This just logs that we received the push notification
           onMessage(messaging, (payload) => {
-            console.log('Foreground message received:', payload);
-            toast({
-              title: payload.notification?.title || 'New Notification',
-              description: payload.notification?.body,
-            });
+            console.log('Foreground push notification received:', payload);
+            console.log('(Toast already shown by Pusher real-time notification)');
           });
 
           return currentToken;
