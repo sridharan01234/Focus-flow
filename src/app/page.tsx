@@ -100,7 +100,14 @@ export default function Home() {
             // Force a reload to ensure the UI updates
             window.location.reload();
             return;
-          } else {
+          } else if (isiOSPWA && justRedirected) {
+            console.warn('⚠️ iOS PWA: No redirect result, but was expecting one. Trying GIS as a fallback.');
+            // This is a fallback for iOS PWA where getRedirectResult might fail silently
+            // even after a successful auth. We can try to use GIS to re-authenticate.
+            await handleSignIn();
+            return;
+          }
+          else {
             console.log('ℹ️ No redirect result (normal page load or redirect already processed)');
             
             // If we were expecting a redirect result but didn't get one, there might be an issue
@@ -160,7 +167,7 @@ export default function Home() {
             
             if (error.code === 'auth/network-request-failed') {
               if (isiOSPWA) {
-                alert('Network error on iOS PWA.\n\nPlease:\n1. Check your internet connection\n2. Try closing and reopening the app\n3. If issue persists, uninstall and reinstall the PWA');
+                alert('A network error occurred during sign-in. This can happen on iOS if the connection is slow. Please close and reopen the app to try again.');
               } else {
                 alert('Network error. Please check your internet connection and try again.');
               }
