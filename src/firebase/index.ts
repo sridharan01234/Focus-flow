@@ -2,6 +2,8 @@ import { getFirebaseApp, firebaseConfig } from './config';
 import {
   getAuth,
   connectAuthEmulator,
+  setPersistence,
+  browserLocalPersistence,
   Auth,
 } from 'firebase/auth';
 import {
@@ -18,6 +20,14 @@ export function initializeFirebase(): {
   const app = getFirebaseApp();
   const auth = getAuth(app);
   const firestore = getFirestore(app);
+
+  // Explicitly set persistence to LOCAL for auth state
+  // This ensures user stays signed in after redirect (critical for iOS PWA)
+  if (typeof window !== 'undefined') {
+    setPersistence(auth, browserLocalPersistence).catch((error) => {
+      console.error('Failed to set auth persistence:', error);
+    });
+  }
 
   if (process.env.NEXT_PUBLIC_EMULATOR_HOST) {
     // Check if the emulators are already connected

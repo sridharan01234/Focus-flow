@@ -32,23 +32,34 @@ export default function Home() {
   const { isConnected } = useNotifications(user?.uid || null);
   const { notificationPermission, requestPermission, isSupported, isIOS, needsHTTPS, fcmToken } = usePushNotifications(user?.uid || null);
   const [showNotificationDebug, setShowNotificationDebug] = useState(false);
+  const [redirectHandled, setRedirectHandled] = useState(false);
 
   // Handle redirect result after Google Sign-In (critical for iOS PWA)
   useEffect(() => {
+    if (redirectHandled) return;
+    
     const auth = getAuth();
+    console.log('Checking for redirect result...');
+    
     getRedirectResult(auth)
       .then((result) => {
+        setRedirectHandled(true);
         if (result) {
-          console.log('Successfully signed in after redirect:', result.user.email);
+          console.log('✅ Successfully signed in after redirect:', result.user.email);
+          console.log('User ID:', result.user.uid);
+          // Auth state will automatically update via useAuthState hook
+        } else {
+          console.log('No redirect result (normal page load)');
         }
       })
       .catch((error) => {
-        console.error('Error handling redirect result:', error);
-        if (error.code !== 'auth/popup-closed-by-user') {
-          alert('Sign-in failed. Please try again.');
+        setRedirectHandled(true);
+        console.error('❌ Error handling redirect result:', error);
+        if (error.code !== 'auth/popup-closed-by-user' && error.code !== 'auth/cancelled-popup-request') {
+          alert(`Sign-in failed: ${error.message}`);
         }
       });
-  }, []);
+  }, [redirectHandled]);
 
   const [tasksSnapshot, loading, error] = useCollection(
     user ? collection(db, 'users', user.uid, 'tasks') : null
@@ -140,16 +151,24 @@ export default function Home() {
   const handleSignIn = async () => {
     const auth = getAuth();
     const provider = new GoogleAuthProvider();
+    
+    // Add custom parameters to ensure fresh sign-in
+    provider.setCustomParameters({
+      prompt: 'select_account'
+    });
+    
     try {
+      console.log('🔑 Starting Google Sign-In redirect...');
       // Use signInWithRedirect for better mobile/PWA support (iOS Safari standalone mode blocks popups)
       await signInWithRedirect(auth, provider);
+      // Note: Code after this line won't execute as page redirects
     } catch (error: any) {
-      console.error('Error signing in with Google', error);
+      console.error('❌ Error signing in with Google', error);
       // More specific error handling
       if (error.code === 'auth/operation-not-allowed') {
         alert('Google Sign-In is not enabled. Please enable it in Firebase Console.');
       } else {
-        alert('Sign-in failed. Please try again.');
+        alert(`Sign-in failed: ${error.message}`);
       }
     }
   };
