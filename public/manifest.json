@@ -1,12 +1,14 @@
 {
+  "id": "/",
   "name": "FocusFlow - Task Manager",
   "short_name": "FocusFlow",
-  "description": "AI-powered task management for ADHD",
+  "description": "AI-powered task management for ADHD with push notifications",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#6366f1",
   "orientation": "portrait-primary",
+  "scope": "/",
   "icons": [
     {
       "src": "/icon-192x192.png",

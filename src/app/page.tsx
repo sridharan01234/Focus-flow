@@ -173,10 +173,37 @@ export default function Home() {
                   <div>iOS: <strong>{isIOS ? 'Yes' : 'No'}</strong></div>
                   <div>HTTPS: <strong>{needsHTTPS ? 'No (Required!)' : 'Yes'}</strong></div>
                   <div>FCM Token: <strong>{fcmToken ? 'Registered ✅' : 'Not registered'}</strong></div>
+                  <div>Standalone Mode: <strong>{typeof window !== 'undefined' && (window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone) ? 'Yes ✅' : 'No (Add to Home Screen!)'}</strong></div>
+                  {isIOS && !isSupported && (
+                    <div className="pt-2 text-amber-600 font-semibold">
+                      ⚠️ On iOS, you must ADD TO HOME SCREEN first, then open from home screen icon!
+                    </div>
+                  )}
                   <div className="pt-2">
                     <Button onClick={requestPermission} size="sm" className="w-full">
                       Request Permission Now
                     </Button>
+                  </div>
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {!isSupported && isIOS && (
+              <Alert className="border-2 border-amber-500 bg-amber-50 dark:bg-amber-950">
+                <Bell className="h-5 w-5 text-amber-600" />
+                <AlertTitle className="text-lg font-bold text-amber-800 dark:text-amber-200">
+                  📱 Add to Home Screen Required
+                </AlertTitle>
+                <AlertDescription className="flex flex-col gap-3 mt-2">
+                  <div className="text-sm text-amber-700 dark:text-amber-300">
+                    <p className="font-semibold mb-2">On iPhone, push notifications only work for apps added to Home Screen:</p>
+                    <ol className="list-decimal list-inside space-y-1 text-xs">
+                      <li>Tap the Share button (square with arrow) at the bottom</li>
+                      <li>Scroll down and tap "Add to Home Screen"</li>
+                      <li>Tap "Add" in the top right</li>
+                      <li>Open the app from your Home Screen (not Safari)</li>
+                      <li>Then you can enable notifications!</li>
+                    </ol>
                   </div>
                 </AlertDescription>
               </Alert>
