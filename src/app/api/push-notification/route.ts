@@ -25,10 +25,10 @@ export async function POST(request: NextRequest) {
     const db = getFirestore(app);
     const userRef = doc(db, 'users', userId);
     const userDoc = await getDoc(userRef);
-    
+
     if (!userDoc.exists()) {
       console.log('User document not found:', userId);
-      return NextResponse.json({ 
+      return NextResponse.json({
         success: false,
         message: 'User not found'
       });
@@ -36,10 +36,10 @@ export async function POST(request: NextRequest) {
 
     const userData = userDoc.data();
     const fcmTokens = userData?.fcmTokens || {};
-    
+
     if (Object.keys(fcmTokens).length === 0) {
       console.log('No FCM tokens found for user:', userId);
-      return NextResponse.json({ 
+      return NextResponse.json({
         success: false,
         message: 'No FCM tokens registered'
       });
@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
 
     // Extract token strings from the fcmTokens object
     const tokens = Object.values(fcmTokens).map((t: any) => t.token);
-    
+
     console.log(`Sending push notification to ${tokens.length} device(s)`);
 
     // Send push notification via Firebase Admin
@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
       // Note: Token cleanup can be done here if needed
     }
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       success: true,
       successCount: result.successCount,
       failureCount: result.failureCount,

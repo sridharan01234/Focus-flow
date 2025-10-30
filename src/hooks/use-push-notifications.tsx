@@ -8,6 +8,8 @@ import { useToast } from '@/hooks/use-toast';
 export function usePushNotifications(userId: string | null) {
   const [fcmToken, setFcmToken] = useState<string | null>(null);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
+  const [isIOS, setIsIOS] = useState(false);
+  const [needsHTTPS, setNeedsHTTPS] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -15,6 +17,18 @@ export function usePushNotifications(userId: string | null) {
     if (typeof window === 'undefined' || !('Notification' in window)) {
       console.log('Push notifications not supported in this environment');
       return;
+    }
+
+    // Detect iOS
+    const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+    setIsIOS(ios);
+    
+    // Check if running on HTTPS (required for iPhone)
+    const isHTTPS = window.location.protocol === 'https:';
+    setNeedsHTTPS(ios && !isHTTPS);
+    
+    if (ios && !isHTTPS) {
+      console.warn('⚠️ iPhone requires HTTPS for push notifications. Please deploy to Firebase Hosting or use HTTPS.');
     }
 
     setNotificationPermission(Notification.permission);
@@ -30,26 +44,63 @@ export function usePushNotifications(userId: string | null) {
       return null;
     }
 
+    // Check for HTTPS requirement on iOS
+    if (needsHTTPS) {
+      toast({
+        title: 'HTTPS Required',
+        description: 'iPhone requires HTTPS. Please use the deployed website, not localhost.',
+        variant: 'destructive',
+      });
+      return null;
+    }
+
     try {
+      // On iOS, check for specific Safari requirements
+      if (isIOS) {
+        console.log('📱 Requesting notification permission on iOS Safari...');
+        
+        // Check iOS version (needs 16.4+)
+        const match = navigator.userAgent.match(/OS (\d+)_(\d+)/);
+        if (match) {
+          const version = parseFloat(`${match[1]}.${match[2]}`);
+          if (version < 16.4) {
+            toast({
+              title: 'Update Required',
+              description: 'iOS 16.4 or later is required for push notifications',
+              variant: 'destructive',
+            });
+            return null;
+          }
+        }
+      }
+
       const permission = await Notification.requestPermission();
       setNotificationPermission(permission);
 
       if (permission === 'granted') {
+        console.log('✅ Notification permission granted');
         const token = await registerServiceWorkerAndGetToken();
         return token;
-      } else {
+      } else if (permission === 'denied') {
         toast({
           title: 'Permission Denied',
-          description: 'Please enable notifications in your browser settings',
+          description: isIOS 
+            ? 'Go to Settings > Safari > Websites > Notifications and allow this site'
+            : 'Please enable notifications in your browser settings',
           variant: 'destructive',
         });
+        return null;
+      } else {
+        console.log('Notification permission dismissed');
         return null;
       }
     } catch (error) {
       console.error('Error requesting notification permission:', error);
       toast({
         title: 'Error',
-        description: 'Failed to request notification permission',
+        description: isIOS
+          ? 'Make sure you are using Safari browser on iOS 16.4+'
+          : 'Failed to request notification permission',
         variant: 'destructive',
       });
       return null;
@@ -125,5 +176,7 @@ export function usePushNotifications(userId: string | null) {
     notificationPermission,
     requestPermission,
     isSupported: typeof window !== 'undefined' && 'Notification' in window,
+    isIOS,
+    needsHTTPS,
   };
 }

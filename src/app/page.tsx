@@ -30,7 +30,7 @@ export default function Home() {
   const { user, loading: userLoading } = useUser();
   const db = getFirestore();
   const { isConnected } = useNotifications(user?.uid || null);
-  const { notificationPermission, requestPermission, isSupported } = usePushNotifications(user?.uid || null);
+  const { notificationPermission, requestPermission, isSupported, isIOS, needsHTTPS } = usePushNotifications(user?.uid || null);
 
   const [tasksSnapshot, loading, error] = useCollection(
     user ? collection(db, 'users', user.uid, 'tasks') : null
@@ -155,12 +155,30 @@ export default function Home() {
             {isSupported && notificationPermission !== 'granted' && (
               <Alert>
                 <Bell className="h-4 w-4" />
-                <AlertTitle>Enable Push Notifications</AlertTitle>
-                <AlertDescription className="flex items-center justify-between">
-                  <span>Get notified on your phone and other devices</span>
-                  <Button onClick={requestPermission} variant="outline" size="sm">
-                    Enable
-                  </Button>
+                <AlertTitle>
+                  {needsHTTPS ? '🔒 HTTPS Required' : 'Enable Push Notifications'}
+                </AlertTitle>
+                <AlertDescription className="flex flex-col gap-2">
+                  {needsHTTPS ? (
+                    <div className="text-sm">
+                      <p>iPhone requires HTTPS for push notifications.</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Please deploy to Firebase Hosting and use the deployed URL instead of localhost.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between">
+                      <span>
+                        {isIOS 
+                          ? 'Get notified on your iPhone (requires Safari & iOS 16.4+)'
+                          : 'Get notified on your phone and other devices'
+                        }
+                      </span>
+                      <Button onClick={requestPermission} variant="outline" size="sm">
+                        Enable
+                      </Button>
+                    </div>
+                  )}
                 </AlertDescription>
               </Alert>
             )}
