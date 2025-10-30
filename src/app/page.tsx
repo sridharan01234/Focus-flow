@@ -153,42 +153,53 @@ export default function Home() {
         {user ? (
           <div className="max-w-3xl mx-auto flex flex-col gap-8">
             {isSupported && notificationPermission !== 'granted' && (
-              <Alert>
-                <Bell className="h-4 w-4" />
-                <AlertTitle>
-                  {needsHTTPS ? '🔒 HTTPS Required' : 'Enable Push Notifications'}
+              <Alert className="border-2 border-primary">
+                <Bell className="h-5 w-5" />
+                <AlertTitle className="text-lg font-bold">
+                  {needsHTTPS ? '🔒 HTTPS Required' : '🔔 Enable Push Notifications'}
                 </AlertTitle>
-                <AlertDescription className="flex flex-col gap-2">
+                <AlertDescription className="flex flex-col gap-3 mt-2">
                   {needsHTTPS ? (
                     <div className="text-sm">
-                      <p>iPhone requires HTTPS for push notifications.</p>
+                      <p className="font-semibold">iPhone requires HTTPS for push notifications.</p>
                       <p className="mt-1 text-xs text-muted-foreground">
                         Please deploy to Firebase Hosting and use the deployed URL instead of localhost.
                       </p>
                     </div>
                   ) : (
-                    <div className="flex items-center justify-between">
-                      <span>
-                        {isIOS 
-                          ? 'Get notified on your iPhone (requires Safari & iOS 16.4+)'
-                          : 'Get notified on your phone and other devices'
-                        }
-                      </span>
-                      <Button onClick={requestPermission} variant="outline" size="sm">
-                        Enable
+                    <>
+                      <div className="text-sm">
+                        <p className="font-semibold mb-1">
+                          {isIOS 
+                            ? '📱 Get system notifications on your iPhone like WhatsApp'
+                            : '📱 Get system notifications on all your devices'
+                          }
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {isIOS 
+                            ? 'Requires Safari browser & iOS 16.4+. You\'ll see a permission popup.'
+                            : 'Click Enable and allow notifications when prompted by your browser.'
+                          }
+                        </p>
+                      </div>
+                      <Button onClick={requestPermission} className="w-full" size="lg">
+                        <Bell className="mr-2 h-4 w-4" />
+                        Enable Push Notifications
                       </Button>
-                    </div>
+                    </>
                   )}
                 </AlertDescription>
               </Alert>
             )}
             {notificationPermission === 'granted' && (
-              <Alert>
-                <Bell className="h-4 w-4" />
-                <AlertTitle>✅ Notifications Enabled</AlertTitle>
+              <Alert className="border-green-500 bg-green-50 dark:bg-green-950">
+                <Bell className="h-5 w-5 text-green-600" />
+                <AlertTitle className="text-green-800 dark:text-green-200">
+                  ✅ Push Notifications Active
+                </AlertTitle>
                 <AlertDescription>
-                  <div className="text-sm text-muted-foreground">
-                    Push notifications are active. You'll receive updates when tasks change.
+                  <div className="text-sm text-green-700 dark:text-green-300">
+                    You'll receive system notifications (like WhatsApp) when tasks are added, updated, or deleted.
                   </div>
                 </AlertDescription>
               </Alert>

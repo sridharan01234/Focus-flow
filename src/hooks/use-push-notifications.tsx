@@ -100,9 +100,21 @@ export function usePushNotifications(userId: string | null) {
       }
 
       console.log('🔔 Requesting notification permission...');
+      console.log('Browser:', navigator.userAgent);
+      console.log('HTTPS:', window.location.protocol === 'https:');
+      
       const permission = await Notification.requestPermission();
-      console.log('Permission result:', permission);
+      console.log('✅ Permission result:', permission);
       setNotificationPermission(permission);
+      
+      // Alert user of the result
+      if (permission === 'granted') {
+        console.log('🎉 Permission GRANTED! Registering for push notifications...');
+      } else if (permission === 'denied') {
+        console.log('❌ Permission DENIED. User must enable in browser settings.');
+      } else {
+        console.log('⚠️ Permission DISMISSED (user clicked away from popup).');
+      }
 
       if (permission === 'granted') {
         console.log('✅ Notification permission granted');
