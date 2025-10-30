@@ -18,7 +18,7 @@ import {
 } from 'firebase/firestore';
 import { useCollection } from 'react-firebase-hooks/firestore';
 import { Button } from '@/components/ui/button';
-import { getAuth, GoogleAuthProvider, signInWithRedirect, getRedirectResult, signOut } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, signInWithRedirect, getRedirectResult, signOut, setPersistence, browserLocalPersistence } from 'firebase/auth';
 import { useNotifications } from '@/hooks/use-notifications';
 import { usePushNotifications } from '@/hooks/use-push-notifications';
 import { sendNotification } from '@/lib/notifications';
@@ -38,8 +38,18 @@ export default function Home() {
   useEffect(() => {
     if (redirectHandled) return;
     
+    // Check localStorage availability
+    try {
+      localStorage.setItem('test', 'test');
+      localStorage.removeItem('test');
+      console.log('✅ localStorage is available');
+    } catch (e) {
+      console.error('❌ localStorage is NOT available:', e);
+    }
+    
     const auth = getAuth();
     console.log('Checking for redirect result...');
+    console.log('Current auth state:', auth.currentUser?.email || 'No user');
     
     getRedirectResult(auth)
       .then((result) => {
@@ -47,14 +57,21 @@ export default function Home() {
         if (result) {
           console.log('✅ Successfully signed in after redirect:', result.user.email);
           console.log('User ID:', result.user.uid);
+          console.log('Access Token:', result.user.getIdToken().then(token => console.log('Token length:', token.length)));
           // Auth state will automatically update via useAuthState hook
         } else {
           console.log('No redirect result (normal page load)');
+          console.log('Checking localStorage for existing auth...');
+          // Check if there's any Firebase auth data in localStorage
+          const keys = Object.keys(localStorage).filter(key => key.includes('firebase'));
+          console.log('Firebase localStorage keys:', keys);
         }
       })
       .catch((error) => {
         setRedirectHandled(true);
         console.error('❌ Error handling redirect result:', error);
+        console.error('Error code:', error.code);
+        console.error('Error details:', error);
         if (error.code !== 'auth/popup-closed-by-user' && error.code !== 'auth/cancelled-popup-request') {
           alert(`Sign-in failed: ${error.message}`);
         }
@@ -158,7 +175,11 @@ export default function Home() {
     });
     
     try {
-      console.log('🔑 Starting Google Sign-In redirect...');
+      console.log('🔑 Setting auth persistence to LOCAL...');
+      // CRITICAL: Set persistence BEFORE signInWithRedirect
+      await setPersistence(auth, browserLocalPersistence);
+      console.log('✅ Persistence set, starting redirect...');
+      
       // Use signInWithRedirect for better mobile/PWA support (iOS Safari standalone mode blocks popups)
       await signInWithRedirect(auth, provider);
       // Note: Code after this line won't execute as page redirects
