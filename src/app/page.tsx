@@ -241,37 +241,39 @@ export default function Home() {
       
       console.log('📱 Device mode:', { isStandalone, isIOS });
       
-      // On iOS PWA, skip popup and go straight to redirect (popups are always blocked)
-      if (isStandalone && isIOS) {
-        console.log('📱 iOS PWA detected - using redirect flow directly');
-        sessionStorage.setItem('auth_redirect_pending', 'true');
-        sessionStorage.setItem('auth_redirect_timestamp', Date.now().toString());
-        await signInWithRedirect(auth, provider);
-        console.log('⚠️ If you see this, redirect did not happen!');
-      } else {
-        // Try popup first (works better with third-party cookies on desktop)
-        try {
-          console.log('🔑 Attempting popup sign-in...');
-          const result = await signInWithPopup(auth, provider);
-          console.log('✅ ✅ ✅ Popup sign-in successful!');
-          console.log('✅ User email:', result.user.email);
-          console.log('✅ User ID:', result.user.uid);
-          // No need to reload, auth state will update automatically
-        } catch (popupError: any) {
-          console.log('⚠️ Popup failed, trying redirect...', popupError.code);
-          
-          // If popup was blocked or closed, try redirect
-          if (popupError.code === 'auth/popup-blocked' || 
-              popupError.code === 'auth/popup-closed-by-user' ||
-              popupError.code === 'auth/cancelled-popup-request') {
-            
-            console.log('🔑 Using redirect sign-in instead...');
-            sessionStorage.setItem('auth_redirect_pending', 'true');
-            sessionStorage.setItem('auth_redirect_timestamp', Date.now().toString());
-            await signInWithRedirect(auth, provider);
-            console.log('⚠️ If you see this, redirect did not happen!');
+      // WORKAROUND: Use popup for ALL devices (iOS PWA has issues with redirect)
+      // iOS will open an in-app browser tab instead of a popup
+      try {
+        console.log('🔑 Attempting sign-in with popup...');
+        const result = await signInWithPopup(auth, provider);
+        console.log('✅ ✅ ✅ Sign-in successful!');
+        console.log('✅ User email:', result.user.email);
+        console.log('✅ User ID:', result.user.uid);
+        
+        // On iOS PWA, the popup opens Safari, so we need to indicate success
+        if (isStandalone && isIOS) {
+          alert(`Welcome ${result.user.displayName || result.user.email}!\n\nYou are now signed in. Tap anywhere to continue.`);
+        }
+      } catch (popupError: any) {
+        console.error('❌ Sign-in error:', popupError.code, popupError.message);
+        
+        // iOS PWA specific handling
+        if (isStandalone && isIOS) {
+          if (popupError.code === 'auth/popup-closed-by-user') {
+            console.log('ℹ️ User closed the sign-in window');
+            // Don't show error, user intentionally cancelled
+          } else if (popupError.code === 'auth/network-request-failed') {
+            alert('Network error. Please ensure you have a stable internet connection and try again.\n\nTip: On iOS, sign-in opens in Safari. After signing in there, return to this app.');
           } else {
-            // Re-throw if it's a different error
+            alert(`Sign-in failed: ${popupError.message}\n\nOn iOS, please sign in when Safari opens, then return to this app.`);
+          }
+        } else {
+          // Desktop/web handling - try redirect as fallback
+          if (popupError.code === 'auth/popup-blocked') {
+            console.log('🔑 Popup blocked, using redirect...');
+            sessionStorage.setItem('auth_redirect_pending', 'true');
+            await signInWithRedirect(auth, provider);
+          } else if (popupError.code !== 'auth/popup-closed-by-user' && popupError.code !== 'auth/cancelled-popup-request') {
             throw popupError;
           }
         }
