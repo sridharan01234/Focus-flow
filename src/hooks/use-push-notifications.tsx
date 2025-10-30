@@ -58,11 +58,16 @@ export function usePushNotifications(userId: string | null) {
       // On iOS, check for specific Safari requirements
       if (isIOS) {
         console.log('📱 Requesting notification permission on iOS Safari...');
+        console.log('User agent:', navigator.userAgent);
+        console.log('Protocol:', window.location.protocol);
+        console.log('Notification API available:', 'Notification' in window);
+        console.log('Current permission:', Notification.permission);
         
         // Check iOS version (needs 16.4+)
         const match = navigator.userAgent.match(/OS (\d+)_(\d+)/);
         if (match) {
           const version = parseFloat(`${match[1]}.${match[2]}`);
+          console.log('iOS version:', version);
           if (version < 16.4) {
             toast({
               title: 'Update Required',
@@ -72,9 +77,18 @@ export function usePushNotifications(userId: string | null) {
             return null;
           }
         }
+        
+        // Check if running as standalone (added to home screen)
+        const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone;
+        console.log('Running as standalone app:', isStandalone);
+        if (!isStandalone) {
+          console.log('⚠️ For best experience on iPhone, add this site to your Home Screen');
+        }
       }
 
+      console.log('🔔 Requesting notification permission...');
       const permission = await Notification.requestPermission();
+      console.log('Permission result:', permission);
       setNotificationPermission(permission);
 
       if (permission === 'granted') {

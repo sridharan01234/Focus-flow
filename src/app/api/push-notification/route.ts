@@ -1,6 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getFirestore, doc, getDoc } from 'firebase/firestore';
-import { getFirebaseApp } from '@/firebase/config';
 import { sendPushNotification } from '@/lib/firebase-admin';
 
 // Force dynamic rendering for this API route
@@ -18,16 +16,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('Push notification request received:', { userId, title, messageBody });
+    console.log('📱 Push notification request received:', { userId, title, messageBody });
 
-    // Get user's FCM tokens from Firestore
-    const app = getFirebaseApp();
-    const db = getFirestore(app);
-    const userRef = doc(db, 'users', userId);
-    const userDoc = await getDoc(userRef);
+    // Get user's FCM tokens from Firestore using Admin SDK
+    const { getAdminApp } = await import('@/lib/firebase-admin');
+    const { getFirestore: getAdminFirestore } = await import('firebase-admin/firestore');
+    
+    const adminApp = getAdminApp();
+    const adminDb = getAdminFirestore(adminApp);
+    const userRef = adminDb.collection('users').doc(userId);
+    const userDoc = await userRef.get();
 
-    if (!userDoc.exists()) {
-      console.log('User document not found:', userId);
+    if (!userDoc.exists) {
+      console.log('❌ User document not found:', userId);
       return NextResponse.json({
         success: false,
         message: 'User not found'
@@ -38,7 +39,7 @@ export async function POST(request: NextRequest) {
     const fcmTokens = userData?.fcmTokens || {};
 
     if (Object.keys(fcmTokens).length === 0) {
-      console.log('No FCM tokens found for user:', userId);
+      console.log('⚠️ No FCM tokens found for user:', userId);
       return NextResponse.json({
         success: false,
         message: 'No FCM tokens registered'

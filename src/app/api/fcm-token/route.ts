@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getFirestore, doc, setDoc } from 'firebase/firestore';
-import { getFirebaseApp } from '@/firebase/config';
+import { getAdminApp } from '@/lib/firebase-admin';
+import { getFirestore } from 'firebase-admin/firestore';
+
+// Force dynamic rendering
+export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,13 +16,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const app = getFirebaseApp();
+    // Use Firebase Admin SDK (has full access)
+    const app = getAdminApp();
     const db = getFirestore(app);
     
     // Save FCM token to user's document
-    const userRef = doc(db, 'users', userId);
-    await setDoc(
-      userRef,
+    const userRef = db.collection('users').doc(userId);
+    await userRef.set(
       {
         fcmTokens: {
           [token]: {
@@ -32,9 +35,10 @@ export async function POST(request: NextRequest) {
       { merge: true }
     );
 
+    console.log('✅ FCM token saved for user:', userId);
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Error saving FCM token:', error);
+    console.error('❌ Error saving FCM token:', error);
     return NextResponse.json(
       { error: 'Failed to save FCM token' },
       { status: 500 }
