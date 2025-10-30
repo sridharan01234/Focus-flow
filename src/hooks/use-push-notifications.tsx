@@ -14,44 +14,81 @@ export function usePushNotifications(userId: string | null) {
 
   useEffect(() => {
     // Check if we're in a browser environment
-    if (typeof window === 'undefined' || !('Notification' in window)) {
-      console.log('Push notifications not supported in this environment');
+    if (typeof window === 'undefined') {
+      console.log('Not in browser environment');
       return;
     }
 
-    // Detect iOS
-    const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
-    setIsIOS(ios);
+    // Better iOS detection - check multiple ways
+    const isIOSDevice = /iPad|iPhone|iPod/.test(navigator.userAgent) 
+      || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+      || /iPad|iPhone|iPod/.test(navigator.platform);
+    
+    // Check for Safari browser (required for iOS push notifications)
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+    
+    setIsIOS(isIOSDevice);
     
     // Check if running on HTTPS (required for iPhone)
     const isHTTPS = window.location.protocol === 'https:';
-    setNeedsHTTPS(ios && !isHTTPS);
+    setNeedsHTTPS(isIOSDevice && !isHTTPS);
     
-    if (ios && !isHTTPS) {
-      console.warn('⚠️ iPhone requires HTTPS for push notifications. Please deploy to Firebase Hosting or use HTTPS.');
+    console.log('📱 Device Detection:', {
+      userAgent: navigator.userAgent,
+      platform: navigator.platform,
+      isIOSDevice,
+      isSafari,
+      isHTTPS,
+      notificationAPI: 'Notification' in window,
+      permission: typeof Notification !== 'undefined' ? Notification.permission : 'N/A',
+    });
+    
+    if (isIOSDevice && !isHTTPS) {
+      console.warn('⚠️ iPhone requires HTTPS for push notifications.');
+    }
+    
+    if (isIOSDevice && !isSafari) {
+      console.warn('⚠️ iPhone requires Safari browser for push notifications. Chrome/Firefox on iOS do not support web push.');
     }
 
-    setNotificationPermission(Notification.permission);
-    
-    console.log('📱 Push Notifications Hook Initialized:', {
-      userId,
-      permission: Notification.permission,
-      isIOS: ios,
-      needsHTTPS: ios && !isHTTPS,
-    });
+    if (typeof Notification !== 'undefined') {
+      setNotificationPermission(Notification.permission);
+      
+      console.log('📱 Push Notifications Hook Initialized:', {
+        userId,
+        permission: Notification.permission,
+        isIOS: isIOSDevice,
+        isSafari,
+        needsHTTPS: isIOSDevice && !isHTTPS,
+      });
 
-    // Auto-register if permission already granted and we have a userId
-    if (Notification.permission === 'granted' && userId && !fcmToken) {
-      console.log('🔄 Permission already granted, auto-registering FCM token...');
-      registerServiceWorkerAndGetToken();
+      // Auto-register if permission already granted and we have a userId
+      if (Notification.permission === 'granted' && userId && !fcmToken) {
+        console.log('🔄 Permission already granted, auto-registering FCM token...');
+        registerServiceWorkerAndGetToken();
+      }
+    } else {
+      console.error('❌ Notification API not available in this browser');
     }
   }, [userId]);
 
   const requestPermission = async () => {
-    if (!('Notification' in window)) {
+    if (typeof Notification === 'undefined' || !('Notification' in window)) {
+      console.error('❌ Notification API not available');
       toast({
         title: 'Not Supported',
-        description: 'Push notifications are not supported in this browser',
+        description: 'Push notifications are not supported in this browser. Please use Safari on iOS 16.4+',
+        variant: 'destructive',
+      });
+      return null;
+    }
+    
+    // Check if we're in Safari on iOS
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+    if (isIOS && !isSafari) {
+      toast({
+        title: 'Safari Required',
+        description: 'Please use Safari browser. Chrome/Firefox on iOS do not support web push notifications.',
         variant: 'destructive',
       });
       return null;
@@ -232,7 +269,7 @@ export function usePushNotifications(userId: string | null) {
     fcmToken,
     notificationPermission,
     requestPermission,
-    isSupported: typeof window !== 'undefined' && 'Notification' in window,
+    isSupported: typeof window !== 'undefined' && typeof Notification !== 'undefined' && 'Notification' in window,
     isIOS,
     needsHTTPS,
   };
