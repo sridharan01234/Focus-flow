@@ -18,7 +18,7 @@ import {
 } from 'firebase/firestore';
 import { useCollection } from 'react-firebase-hooks/firestore';
 import { Button } from '@/components/ui/button';
-import { getAuth, GoogleAuthProvider, signInWithRedirect, signInWithPopup, getRedirectResult, signOut, setPersistence, browserLocalPersistence, indexedDBLocalPersistence, signInWithCredential } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, signInWithRedirect, signInWithPopup, getRedirectResult, signOut, setPersistence, browserLocalPersistence, indexedDBLocalPersistence, signInWithCredential, signInWithCustomToken } from 'firebase/auth';
 import { useNotifications } from '@/hooks/use-notifications';
 import { usePushNotifications } from '@/hooks/use-push-notifications';
 import { sendNotification } from '@/lib/notifications';
@@ -279,6 +279,42 @@ export default function Home() {
     }
   };
 
+  const handleSimpleSignIn = async () => {
+    setAuthInProgress(true);
+    try {
+      console.log('🔐 Using simple DB auth...');
+      
+      // Call the simple auth API
+      const response = await fetch('/api/simple-auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: 'sridharan01234@gmail.com',
+          action: 'getOrCreate'
+        })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Authentication failed');
+      }
+
+      const data = await response.json();
+      console.log('✅ Got custom token from server');
+
+      // Sign in with the custom token
+      const auth = getAuth();
+      await signInWithCustomToken(auth, data.customToken);
+      
+      console.log('✅ Signed in successfully with custom token!');
+      setAuthInProgress(false);
+    } catch (error: any) {
+      console.error('❌ Simple sign-in error:', error);
+      alert(`Sign-in failed: ${error.message}`);
+      setAuthInProgress(false);
+    }
+  };
+
   const handleSignOut = async () => {
     const auth = getAuth();
     await signOut(auth);
@@ -419,13 +455,17 @@ export default function Home() {
             <h2 className="text-2xl font-bold">Welcome to FocusFlow</h2>
             <p className="text-muted-foreground">Please sign in to manage your tasks.</p>
             <div className="flex flex-col gap-3 w-full max-w-sm">
-              <Button onClick={handleSignIn} disabled={authInProgress} size="lg">
-                {authInProgress ? 'Signing in...' : 'Sign in with Google'}
+              <Button onClick={handleSimpleSignIn} disabled={authInProgress} size="lg" variant="default">
+                {authInProgress ? 'Signing in...' : '🔐 Quick Sign In (iOS Fix)'}
+              </Button>
+              <div className="text-xs text-muted-foreground">or</div>
+              <Button onClick={handleSignIn} disabled={authInProgress} size="sm" variant="outline">
+                Sign in with Google
               </Button>
               {isIOSPWA() && (
                 <Button 
                   onClick={() => window.location.href = '/safari-signin'} 
-                  variant="outline"
+                  variant="ghost"
                   size="sm"
                   className="text-xs"
                 >
