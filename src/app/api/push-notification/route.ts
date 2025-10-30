@@ -29,10 +29,11 @@ export async function POST(request: NextRequest) {
 
     if (!userDoc.exists) {
       console.log('❌ User document not found:', userId);
+      console.log('💡 User needs to click "Enable" button to grant notification permission and register FCM token');
       return NextResponse.json({
         success: false,
-        message: 'User not found'
-      });
+        message: 'User not found - notification permission not granted yet. Please click Enable button in the app.'
+      }, { status: 404 });
     }
 
     const userData = userDoc.data();
@@ -40,10 +41,11 @@ export async function POST(request: NextRequest) {
 
     if (Object.keys(fcmTokens).length === 0) {
       console.log('⚠️ No FCM tokens found for user:', userId);
+      console.log('💡 User needs to click "Enable" button to grant notification permission');
       return NextResponse.json({
         success: false,
-        message: 'No FCM tokens registered'
-      });
+        message: 'No FCM tokens registered - please enable notifications in the app'
+      }, { status: 404 });
     }
 
     // Extract token strings from the fcmTokens object

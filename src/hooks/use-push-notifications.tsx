@@ -39,7 +39,13 @@ export function usePushNotifications(userId: string | null) {
       isIOS: ios,
       needsHTTPS: ios && !isHTTPS,
     });
-  }, []);
+
+    // Auto-register if permission already granted and we have a userId
+    if (Notification.permission === 'granted' && userId && !fcmToken) {
+      console.log('🔄 Permission already granted, auto-registering FCM token...');
+      registerServiceWorkerAndGetToken();
+    }
+  }, [userId]);
 
   const requestPermission = async () => {
     if (!('Notification' in window)) {
