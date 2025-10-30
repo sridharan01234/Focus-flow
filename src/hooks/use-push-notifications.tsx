@@ -237,3 +237,21 @@ export function usePushNotifications(userId: string | null) {
     needsHTTPS,
   };
 }
+
+// Export for debugging
+if (typeof window !== 'undefined') {
+  (window as any).debugNotifications = () => {
+    console.log('=== NOTIFICATION DEBUG INFO ===');
+    console.log('Notification API available:', 'Notification' in window);
+    console.log('Current permission:', Notification.permission);
+    console.log('User Agent:', navigator.userAgent);
+    console.log('Protocol:', window.location.protocol);
+    console.log('Service Worker supported:', 'serviceWorker' in navigator);
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(regs => {
+        console.log('Service Worker registrations:', regs.length);
+      });
+    }
+    console.log('==============================');
+  };
+}

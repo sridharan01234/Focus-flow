@@ -30,7 +30,8 @@ export default function Home() {
   const { user, loading: userLoading } = useUser();
   const db = getFirestore();
   const { isConnected } = useNotifications(user?.uid || null);
-  const { notificationPermission, requestPermission, isSupported, isIOS, needsHTTPS } = usePushNotifications(user?.uid || null);
+  const { notificationPermission, requestPermission, isSupported, isIOS, needsHTTPS, fcmToken } = usePushNotifications(user?.uid || null);
+  const [showNotificationDebug, setShowNotificationDebug] = useState(false);
 
   const [tasksSnapshot, loading, error] = useCollection(
     user ? collection(db, 'users', user.uid, 'tasks') : null
@@ -152,6 +153,35 @@ export default function Home() {
       <main className="flex-1 container mx-auto px-4 md:px-6 py-8">
         {user ? (
           <div className="max-w-3xl mx-auto flex flex-col gap-8">
+            {/* Always show notification status button */}
+            <Button 
+              onClick={() => setShowNotificationDebug(!showNotificationDebug)} 
+              variant="outline" 
+              size="sm"
+              className="self-start"
+            >
+              <Bell className="mr-2 h-4 w-4" />
+              Notification Status
+            </Button>
+
+            {showNotificationDebug && (
+              <Alert>
+                <AlertTitle>🔍 Notification Debug Info</AlertTitle>
+                <AlertDescription className="text-xs space-y-1 mt-2">
+                  <div>Permission: <strong>{notificationPermission}</strong></div>
+                  <div>Supported: <strong>{isSupported ? 'Yes' : 'No'}</strong></div>
+                  <div>iOS: <strong>{isIOS ? 'Yes' : 'No'}</strong></div>
+                  <div>HTTPS: <strong>{needsHTTPS ? 'No (Required!)' : 'Yes'}</strong></div>
+                  <div>FCM Token: <strong>{fcmToken ? 'Registered ✅' : 'Not registered'}</strong></div>
+                  <div className="pt-2">
+                    <Button onClick={requestPermission} size="sm" className="w-full">
+                      Request Permission Now
+                    </Button>
+                  </div>
+                </AlertDescription>
+              </Alert>
+            )}
+
             {isSupported && notificationPermission !== 'granted' && (
               <Alert className="border-2 border-primary">
                 <Bell className="h-5 w-5" />
