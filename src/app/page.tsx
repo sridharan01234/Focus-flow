@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { Task } from '@/lib/types';
 import { AppHeader } from '@/components/app/header';
 import { TaskForm } from '@/components/app/task-form';
@@ -18,7 +18,7 @@ import {
 } from 'firebase/firestore';
 import { useCollection } from 'react-firebase-hooks/firestore';
 import { Button } from '@/components/ui/button';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, signInWithRedirect, getRedirectResult, signOut } from 'firebase/auth';
 import { useNotifications } from '@/hooks/use-notifications';
 import { usePushNotifications } from '@/hooks/use-push-notifications';
 import { sendNotification } from '@/lib/notifications';
@@ -32,6 +32,23 @@ export default function Home() {
   const { isConnected } = useNotifications(user?.uid || null);
   const { notificationPermission, requestPermission, isSupported, isIOS, needsHTTPS, fcmToken } = usePushNotifications(user?.uid || null);
   const [showNotificationDebug, setShowNotificationDebug] = useState(false);
+
+  // Handle redirect result after Google Sign-In (critical for iOS PWA)
+  useEffect(() => {
+    const auth = getAuth();
+    getRedirectResult(auth)
+      .then((result) => {
+        if (result) {
+          console.log('Successfully signed in after redirect:', result.user.email);
+        }
+      })
+      .catch((error) => {
+        console.error('Error handling redirect result:', error);
+        if (error.code !== 'auth/popup-closed-by-user') {
+          alert('Sign-in failed. Please try again.');
+        }
+      });
+  }, []);
 
   const [tasksSnapshot, loading, error] = useCollection(
     user ? collection(db, 'users', user.uid, 'tasks') : null
@@ -124,14 +141,13 @@ export default function Home() {
     const auth = getAuth();
     const provider = new GoogleAuthProvider();
     try {
-      await signInWithPopup(auth, provider);
+      // Use signInWithRedirect for better mobile/PWA support (iOS Safari standalone mode blocks popups)
+      await signInWithRedirect(auth, provider);
     } catch (error: any) {
       console.error('Error signing in with Google', error);
       // More specific error handling
       if (error.code === 'auth/operation-not-allowed') {
         alert('Google Sign-In is not enabled. Please enable it in Firebase Console.');
-      } else if (error.code === 'auth/popup-closed-by-user') {
-        console.log('Sign-in popup was closed by user');
       } else {
         alert('Sign-in failed. Please try again.');
       }
