@@ -48,32 +48,59 @@ export default function Home() {
     }
     
     const auth = getAuth();
-    console.log('Checking for redirect result...');
-    console.log('Current auth state:', auth.currentUser?.email || 'No user');
+    console.log('🔍 Checking for redirect result...');
+    console.log('🔍 Current auth.currentUser:', auth.currentUser?.email || 'null');
+    
+    // Set a flag in sessionStorage to track if we just completed a redirect
+    const justRedirected = sessionStorage.getItem('auth_redirect_pending');
+    console.log('🔍 Auth redirect pending flag:', justRedirected);
     
     getRedirectResult(auth)
       .then((result) => {
         setRedirectHandled(true);
+        
         if (result) {
-          console.log('✅ Successfully signed in after redirect:', result.user.email);
-          console.log('User ID:', result.user.uid);
-          console.log('Access Token:', result.user.getIdToken().then(token => console.log('Token length:', token.length)));
-          // Auth state will automatically update via useAuthState hook
+          console.log('✅ ✅ ✅ Successfully signed in after redirect!');
+          console.log('✅ User email:', result.user.email);
+          console.log('✅ User ID:', result.user.uid);
+          console.log('✅ Display name:', result.user.displayName);
+          sessionStorage.removeItem('auth_redirect_pending');
+          // Force a reload to ensure the UI updates
+          window.location.reload();
         } else {
-          console.log('No redirect result (normal page load)');
-          console.log('Checking localStorage for existing auth...');
-          // Check if there's any Firebase auth data in localStorage
+          console.log('ℹ️ No redirect result (normal page load or redirect already processed)');
+          
+          // If we were expecting a redirect result but didn't get one, there might be an issue
+          if (justRedirected) {
+            console.warn('⚠️ Expected redirect result but got null - checking current user...');
+            if (auth.currentUser) {
+              console.log('✅ User is actually signed in:', auth.currentUser.email);
+              sessionStorage.removeItem('auth_redirect_pending');
+            } else {
+              console.error('❌ Redirect completed but no user signed in');
+              sessionStorage.removeItem('auth_redirect_pending');
+              alert('Sign-in may have failed. Please try again.');
+            }
+          }
+          
+          console.log('🔍 Checking localStorage for existing auth...');
           const keys = Object.keys(localStorage).filter(key => key.includes('firebase'));
-          console.log('Firebase localStorage keys:', keys);
+          console.log('🔍 Firebase localStorage keys:', keys.length, 'keys found');
+          if (keys.length > 0) {
+            console.log('🔍 Sample keys:', keys.slice(0, 3));
+          }
         }
       })
       .catch((error) => {
         setRedirectHandled(true);
-        console.error('❌ Error handling redirect result:', error);
-        console.error('Error code:', error.code);
-        console.error('Error details:', error);
+        sessionStorage.removeItem('auth_redirect_pending');
+        console.error('❌ ❌ ❌ Error handling redirect result!');
+        console.error('❌ Error code:', error.code);
+        console.error('❌ Error message:', error.message);
+        console.error('❌ Full error:', error);
+        
         if (error.code !== 'auth/popup-closed-by-user' && error.code !== 'auth/cancelled-popup-request') {
-          alert(`Sign-in failed: ${error.message}`);
+          alert(`Sign-in failed: ${error.message}\nError code: ${error.code}`);
         }
       });
   }, [redirectHandled]);
@@ -175,21 +202,38 @@ export default function Home() {
     });
     
     try {
+      console.log('🔑 Starting Google Sign-In flow...');
       console.log('🔑 Setting auth persistence to LOCAL...');
+      
       // CRITICAL: Set persistence BEFORE signInWithRedirect
       await setPersistence(auth, browserLocalPersistence);
-      console.log('✅ Persistence set, starting redirect...');
+      console.log('✅ Persistence set to browserLocalPersistence');
       
+      // Set a flag so we know to expect a redirect result
+      sessionStorage.setItem('auth_redirect_pending', 'true');
+      console.log('✅ Redirect flag set');
+      
+      console.log('🔑 Initiating redirect to Google...');
       // Use signInWithRedirect for better mobile/PWA support (iOS Safari standalone mode blocks popups)
       await signInWithRedirect(auth, provider);
-      // Note: Code after this line won't execute as page redirects
+      
+      // Note: Code after this line won't execute as page redirects immediately
+      console.log('⚠️ If you see this, redirect did not happen!');
     } catch (error: any) {
-      console.error('❌ Error signing in with Google', error);
+      console.error('❌ ❌ ❌ Error signing in with Google!');
+      console.error('❌ Error code:', error.code);
+      console.error('❌ Error message:', error.message);
+      console.error('❌ Full error:', error);
+      
+      sessionStorage.removeItem('auth_redirect_pending');
+      
       // More specific error handling
       if (error.code === 'auth/operation-not-allowed') {
         alert('Google Sign-In is not enabled. Please enable it in Firebase Console.');
+      } else if (error.code === 'auth/unauthorized-domain') {
+        alert(`This domain is not authorized. Please add "${window.location.hostname}" to Firebase Console authorized domains.`);
       } else {
-        alert(`Sign-in failed: ${error.message}`);
+        alert(`Sign-in failed: ${error.message}\nError code: ${error.code}`);
       }
     }
   };
