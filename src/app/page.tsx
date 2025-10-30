@@ -191,7 +191,9 @@ export default function Home() {
     setAuthInProgress(true);
     const auth = getAuth();
     const provider = new GoogleAuthProvider();
-    provider.setCustomParameters({ prompt: 'select_account' });
+    provider.setCustomParameters({ 
+      prompt: 'select_account'
+    });
 
     try {
       const persistence = isIOSPWA() ? indexedDBLocalPersistence : browserLocalPersistence;
@@ -199,48 +201,56 @@ export default function Home() {
       console.log(`✅ Persistence set to ${isIOSPWA() ? 'indexedDB' : 'browserLocal'}`);
 
       if (isIOSPWA()) {
-        console.log('🔑 iOS PWA detected - GIS ONLY mode');
+        console.log('🔑 iOS PWA detected - trying POPUP (not redirect!)');
         
-        // For iOS PWA, we ONLY use GIS - no redirect fallback
-        // Wait longer for GIS to load
-        const gisReady = await waitForGoogleIdentityServices(10000);
-        
-        if (!gisReady) {
-          console.error('❌ GIS not loaded after 10 seconds');
-          alert('⚠️ Authentication service not ready.\n\nPlease:\n1. Ensure you have internet connection\n2. Close and reopen the app\n3. Try again\n\nIf the issue persists, try removing and re-adding the app to your home screen.');
-          setAuthInProgress(false);
-          return;
-        }
-        
+        // CRITICAL FIX: Try popup FIRST even on iOS PWA
+        // iOS 16.4+ actually supports popups in PWA mode
         try {
-          console.log('✅ GIS ready, initiating sign-in...');
-          await signInWithGoogleIdentityServices();
-          console.log('✅ Successfully signed in with GIS!');
+          console.log('🪟 Attempting popup sign-in...');
+          const result = await signInWithPopup(auth, provider);
+          console.log('✅ Popup sign-in successful!', result.user.email);
           setAuthInProgress(false);
           return;
-        } catch (gisError: any) {
-          console.error('❌ GIS sign-in error:', gisError);
+        } catch (popupError: any) {
+          console.error('❌ Popup failed:', popupError.code, popupError.message);
           
-          // More specific error handling
-          if (gisError.message && gisError.message.includes('popup_closed_by_user')) {
-            console.log('ℹ️ User closed the sign-in popup');
+          // If popup truly doesn't work, show helpful message
+          if (popupError.code === 'auth/popup-blocked') {
+            alert('⚠️ Pop-up blocked\n\niOS PWA requires opening in Safari for first-time sign-in.\n\nSteps:\n1. Copy your app URL\n2. Open in Safari (not PWA)\n3. Sign in there\n4. Return to PWA - you\'ll be signed in!');
             setAuthInProgress(false);
             return;
           }
           
-          if (gisError.message && gisError.message.includes('Client ID')) {
-            alert('❌ Configuration Error\n\nThe Google Client ID is not properly configured. Please contact the app administrator.');
+          if (popupError.code === 'auth/network-request-failed') {
+            // Last resort: instruct user to sign in via Safari
+            const shouldOpenSafari = confirm(
+              '⚠️ iOS PWA Sign-In Issue\n\n' +
+              'iOS PWA has strict security. Would you like to:\n\n' +
+              '• TAP OK to copy the URL and sign in via Safari\n' +
+              '• TAP CANCEL to try again later\n\n' +
+              'After signing in via Safari, return to this PWA and you\'ll be signed in automatically.'
+            );
+            
+            if (shouldOpenSafari) {
+              // Copy URL to clipboard
+              const url = window.location.href;
+              navigator.clipboard.writeText(url).then(() => {
+                alert('✅ URL copied!\n\nNow:\n1. Open Safari\n2. Paste the URL\n3. Sign in\n4. Come back to this PWA');
+              }).catch(() => {
+                alert(`Please open this URL in Safari:\n\n${url}\n\nSign in there, then return to this PWA.`);
+              });
+            }
             setAuthInProgress(false);
             return;
           }
           
-          // Generic GIS error
-          alert(`⚠️ Sign-in failed: ${gisError.message || 'Unknown error'}\n\nPlease try again. If the issue persists:\n1. Check your internet connection\n2. Try removing and re-adding the app to home screen`);
+          // Unknown error
+          alert(`Sign-in error: ${popupError.message}\n\nTry opening the app in Safari instead of PWA mode.`);
           setAuthInProgress(false);
           return;
         }
       } else {
-        // Non-iOS PWA: use popup
+        // Non-iOS PWA: use standard popup
         console.log('🔑 Attempting sign-in with popup...');
         try {
           await signInWithPopup(auth, provider);
@@ -405,12 +415,24 @@ export default function Home() {
             />
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center h-[60vh] gap-4 text-center">
+          <div className="flex flex-col items-center justify-center h-[60vh] gap-6 text-center px-4">
             <h2 className="text-2xl font-bold">Welcome to FocusFlow</h2>
             <p className="text-muted-foreground">Please sign in to manage your tasks.</p>
-            <Button onClick={handleSignIn} disabled={authInProgress}>
-              {authInProgress ? 'Signing in...' : 'Sign in with Google'}
-            </Button>
+            <div className="flex flex-col gap-3 w-full max-w-sm">
+              <Button onClick={handleSignIn} disabled={authInProgress} size="lg">
+                {authInProgress ? 'Signing in...' : 'Sign in with Google'}
+              </Button>
+              {isIOSPWA() && (
+                <Button 
+                  onClick={() => window.location.href = '/safari-signin'} 
+                  variant="outline"
+                  size="sm"
+                  className="text-xs"
+                >
+                  Having trouble? Try Safari sign-in →
+                </Button>
+              )}
+            </div>
           </div>
         )}
       </main>
