@@ -25,6 +25,7 @@ import { sendNotification } from '@/lib/notifications';
 import { Toaster } from '@/components/ui/toaster';
 import { Bell } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { isIOSPWA, showIOSAuthInstructions, logAuthEnvironment, waitForAuthReady } from '@/lib/auth-helpers';
 
 export default function Home() {
   const { user, loading: userLoading } = useUser();
@@ -33,6 +34,11 @@ export default function Home() {
   const { notificationPermission, requestPermission, isSupported, isIOS, needsHTTPS, fcmToken } = usePushNotifications(user?.uid || null);
   const [showNotificationDebug, setShowNotificationDebug] = useState(false);
   const [redirectHandled, setRedirectHandled] = useState(false);
+  
+  // Log environment on mount (helpful for debugging)
+  useEffect(() => {
+    logAuthEnvironment();
+  }, []);
 
   // Handle redirect result after Google Sign-In (critical for iOS PWA)
   useEffect(() => {
@@ -55,11 +61,26 @@ export default function Home() {
     const justRedirected = sessionStorage.getItem('auth_redirect_pending');
     console.log('🔍 Auth redirect pending flag:', justRedirected);
     
+    // Detect iOS PWA
+    const isiOSPWA = isIOSPWA();
+    
     // Add retry logic for network errors (common on iOS PWA)
-    const attemptGetRedirectResult = async (retries = 3, delay = 1000) => {
+    // iOS PWA needs more retries and longer delays
+    const retries = isiOSPWA ? 5 : 3;
+    const initialDelay = isiOSPWA ? 2000 : 1000;
+    
+    const attemptGetRedirectResult = async () => {
       for (let i = 0; i < retries; i++) {
         try {
+          const delay = initialDelay * (i + 1); // Progressive delay
           console.log(`🔄 Attempt ${i + 1}/${retries} to get redirect result...`);
+          
+          // iOS PWA: Add extra delay on first attempt to allow auth state to settle
+          if (isiOSPWA && i === 0) {
+            console.log('⏳ iOS PWA: Waiting for auth state to settle...');
+            await new Promise(resolve => setTimeout(resolve, 1500));
+          }
+          
           const result = await getRedirectResult(auth);
           setRedirectHandled(true);
           
@@ -69,6 +90,12 @@ export default function Home() {
             console.log('✅ User ID:', result.user.uid);
             console.log('✅ Display name:', result.user.displayName);
             sessionStorage.removeItem('auth_redirect_pending');
+            
+            // iOS PWA: Show success message before reload
+            if (isiOSPWA) {
+              alert(`Welcome back, ${result.user.displayName || result.user.email}!`);
+            }
+            
             // Force a reload to ensure the UI updates
             window.location.reload();
             return;
@@ -78,18 +105,29 @@ export default function Home() {
             // If we were expecting a redirect result but didn't get one, there might be an issue
             if (justRedirected) {
               console.warn('⚠️ Expected redirect result but got null - checking current user...');
+              
+              // Wait a bit for auth state to initialize
+              await new Promise(resolve => setTimeout(resolve, 500));
+              
               if (auth.currentUser) {
                 console.log('✅ User is actually signed in:', auth.currentUser.email);
                 sessionStorage.removeItem('auth_redirect_pending');
+                setRedirectHandled(true);
                 return;
               } else if (i < retries - 1) {
-                console.log(`⏳ Waiting ${delay}ms before retry...`);
+                console.log(`⏳ Waiting ${delay}ms before retry ${i + 2}...`);
                 await new Promise(resolve => setTimeout(resolve, delay));
                 continue;
               } else {
                 console.error('❌ Redirect completed but no user signed in after all retries');
                 sessionStorage.removeItem('auth_redirect_pending');
-                alert('Sign-in failed. Please check your internet connection and try again.');
+                setRedirectHandled(true);
+                
+                if (isiOSPWA) {
+                  alert('Sign-in incomplete. Please try signing in again.\n\nTip: Make sure you complete the sign-in in Safari before returning to the app.');
+                } else {
+                  alert('Sign-in failed. Please check your internet connection and try again.');
+                }
                 return;
               }
             }
@@ -100,12 +138,14 @@ export default function Home() {
             if (keys.length > 0) {
               console.log('🔍 Sample keys:', keys.slice(0, 3));
             }
+            setRedirectHandled(true);
             return;
           }
         } catch (error: any) {
           console.error(`❌ Attempt ${i + 1}/${retries} failed:`, error.code);
           
           if (error.code === 'auth/network-request-failed' && i < retries - 1) {
+            const delay = initialDelay * (i + 1);
             console.log(`⏳ Network error, waiting ${delay}ms before retry...`);
             await new Promise(resolve => setTimeout(resolve, delay));
             continue;
@@ -118,7 +158,11 @@ export default function Home() {
             console.error('❌ Full error:', error);
             
             if (error.code === 'auth/network-request-failed') {
-              alert('Network error. Please check your internet connection and try again.\n\nIf you\'re in a PWA, try reopening from your Home Screen.');
+              if (isiOSPWA) {
+                alert('Network error on iOS PWA.\n\nPlease:\n1. Check your internet connection\n2. Try closing and reopening the app\n3. If issue persists, uninstall and reinstall the PWA');
+              } else {
+                alert('Network error. Please check your internet connection and try again.');
+              }
             } else if (error.code !== 'auth/popup-closed-by-user' && error.code !== 'auth/cancelled-popup-request') {
               alert(`Sign-in failed: ${error.message}\nError code: ${error.code}`);
             }
@@ -235,47 +279,47 @@ export default function Home() {
       await setPersistence(auth, browserLocalPersistence);
       console.log('✅ Persistence set to browserLocalPersistence');
       
-      // Detect if we're in standalone mode (PWA on iOS)
-      const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone;
-      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      // iOS PWA WORKAROUND: Use redirect ONLY (popup doesn't work reliably)
+      if (isIOSPWA()) {
+        console.log('🔑 iOS PWA detected - using redirect flow with external Safari');
+        
+        // Show instructions to user
+        const proceed = showIOSAuthInstructions();
+        
+        if (!proceed) {
+          console.log('ℹ️ User cancelled sign-in');
+          return;
+        }
+        
+        // Mark that we're starting a redirect
+        sessionStorage.setItem('auth_redirect_pending', 'true');
+        sessionStorage.setItem('auth_redirect_time', Date.now().toString());
+        
+        // Use redirect which will open in Safari on iOS PWA
+        await signInWithRedirect(auth, provider);
+        
+        // This line won't be reached as the browser redirects
+        return;
+      }
       
-      console.log('📱 Device mode:', { isStandalone, isIOS });
-      
-      // WORKAROUND: Use popup for ALL devices (iOS PWA has issues with redirect)
-      // iOS will open an in-app browser tab instead of a popup
+      // Non-iOS PWA: Try popup first, fallback to redirect
       try {
         console.log('🔑 Attempting sign-in with popup...');
         const result = await signInWithPopup(auth, provider);
         console.log('✅ ✅ ✅ Sign-in successful!');
         console.log('✅ User email:', result.user.email);
         console.log('✅ User ID:', result.user.uid);
-        
-        // On iOS PWA, the popup opens Safari, so we need to indicate success
-        if (isStandalone && isIOS) {
-          alert(`Welcome ${result.user.displayName || result.user.email}!\n\nYou are now signed in. Tap anywhere to continue.`);
-        }
       } catch (popupError: any) {
-        console.error('❌ Sign-in error:', popupError.code, popupError.message);
+        console.error('❌ Popup sign-in error:', popupError.code, popupError.message);
         
-        // iOS PWA specific handling
-        if (isStandalone && isIOS) {
-          if (popupError.code === 'auth/popup-closed-by-user') {
-            console.log('ℹ️ User closed the sign-in window');
-            // Don't show error, user intentionally cancelled
-          } else if (popupError.code === 'auth/network-request-failed') {
-            alert('Network error. Please ensure you have a stable internet connection and try again.\n\nTip: On iOS, sign-in opens in Safari. After signing in there, return to this app.');
-          } else {
-            alert(`Sign-in failed: ${popupError.message}\n\nOn iOS, please sign in when Safari opens, then return to this app.`);
-          }
-        } else {
-          // Desktop/web handling - try redirect as fallback
-          if (popupError.code === 'auth/popup-blocked') {
-            console.log('🔑 Popup blocked, using redirect...');
-            sessionStorage.setItem('auth_redirect_pending', 'true');
-            await signInWithRedirect(auth, provider);
-          } else if (popupError.code !== 'auth/popup-closed-by-user' && popupError.code !== 'auth/cancelled-popup-request') {
-            throw popupError;
-          }
+        // Desktop/web handling - try redirect as fallback
+        if (popupError.code === 'auth/popup-blocked') {
+          console.log('🔑 Popup blocked, using redirect...');
+          sessionStorage.setItem('auth_redirect_pending', 'true');
+          sessionStorage.setItem('auth_redirect_time', Date.now().toString());
+          await signInWithRedirect(auth, provider);
+        } else if (popupError.code !== 'auth/popup-closed-by-user' && popupError.code !== 'auth/cancelled-popup-request') {
+          throw popupError;
         }
       }
       
@@ -286,12 +330,19 @@ export default function Home() {
       console.error('❌ Full error:', error);
       
       sessionStorage.removeItem('auth_redirect_pending');
+      sessionStorage.removeItem('auth_redirect_time');
       
       // More specific error handling
       if (error.code === 'auth/operation-not-allowed') {
         alert('Google Sign-In is not enabled. Please enable it in Firebase Console.');
       } else if (error.code === 'auth/unauthorized-domain') {
         alert(`This domain is not authorized. Please add "${window.location.hostname}" to Firebase Console authorized domains.`);
+      } else if (error.code === 'auth/network-request-failed') {
+        if (isIOSPWA()) {
+          alert('Network error on iOS.\n\nTroubleshooting:\n• Check internet connection\n• Complete sign-in in Safari before returning\n• Try removing and reinstalling the app');
+        } else {
+          alert('Network error. Please check your internet connection and try again.');
+        }
       } else {
         alert(`Sign-in failed: ${error.message}\nError code: ${error.code}`);
       }

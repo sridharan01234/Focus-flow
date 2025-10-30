@@ -24,13 +24,24 @@ export function initializeFirebase(): {
   // Explicitly set persistence to LOCAL for auth state
   // This ensures user stays signed in after redirect (critical for iOS PWA)
   if (typeof window !== 'undefined') {
+    // Detect iOS PWA
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone;
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const isIOSPWA = isStandalone && isIOS;
+    
     // Set persistence synchronously before any auth operations
     setPersistence(auth, browserLocalPersistence)
       .then(() => {
         console.log('✅ Auth persistence set to LOCAL (browserLocalPersistence)');
+        if (isIOSPWA) {
+          console.log('📱 Running in iOS PWA mode - auth configured for iOS compatibility');
+        }
       })
       .catch((error) => {
         console.error('❌ Failed to set auth persistence:', error);
+        if (isIOSPWA) {
+          console.error('⚠️ iOS PWA detected - persistence failure may affect sign-in');
+        }
       });
   }
 
