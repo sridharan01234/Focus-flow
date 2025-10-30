@@ -182,6 +182,17 @@ export default function Home() {
                 </AlertDescription>
               </Alert>
             )}
+            {notificationPermission === 'granted' && (
+              <Alert>
+                <Bell className="h-4 w-4" />
+                <AlertTitle>✅ Notifications Enabled</AlertTitle>
+                <AlertDescription>
+                  <div className="text-sm text-muted-foreground">
+                    Push notifications are active. You'll receive updates when tasks change.
+                  </div>
+                </AlertDescription>
+              </Alert>
+            )}
             <TaskForm onAddTask={handleAddTask} />
             <TaskList
               tasks={tasks}
