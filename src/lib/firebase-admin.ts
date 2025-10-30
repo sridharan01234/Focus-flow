@@ -15,17 +15,29 @@ export function getAdminApp() {
   try {
     const projectId = process.env.FIREBASE_ADMIN_PROJECT_ID;
     const clientEmail = process.env.FIREBASE_ADMIN_CLIENT_EMAIL;
-    const privateKey = process.env.FIREBASE_ADMIN_PRIVATE_KEY;
+    let privateKey = process.env.FIREBASE_ADMIN_PRIVATE_KEY;
 
-    if (!clientEmail || !privateKey) {
+    if (!clientEmail || !privateKey || !projectId) {
       throw new Error('Firebase Admin credentials not found in environment variables');
     }
+
+    // Handle both quoted and unquoted private keys
+    // Remove surrounding quotes if present
+    privateKey = privateKey.replace(/^["']|["']$/g, '');
+    
+    // Replace literal \n with actual newlines
+    privateKey = privateKey.replace(/\\n/g, '\n');
+
+    console.log('🔑 Initializing Firebase Admin with credentials...');
+    console.log('Project ID:', projectId);
+    console.log('Client Email:', clientEmail);
+    console.log('Private Key starts with:', privateKey.substring(0, 30) + '...');
 
     adminApp = initializeApp({
       credential: cert({
         projectId,
         clientEmail,
-        privateKey: privateKey.replace(/\\n/g, '\n'),
+        privateKey,
       }),
     });
     
