@@ -18,7 +18,7 @@ import {
 } from 'firebase/firestore';
 import { useCollection } from 'react-firebase-hooks/firestore';
 import { Button } from '@/components/ui/button';
-import { getAuth, GoogleAuthProvider, signInWithRedirect, signInWithPopup, getRedirectResult, signOut, setPersistence, browserLocalPersistence, indexedDBLocalPersistence } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, signInWithRedirect, signInWithPopup, getRedirectResult, signOut, setPersistence, browserLocalPersistence, indexedDBLocalPersistence, signInWithCredential } from 'firebase/auth';
 import { useNotifications } from '@/hooks/use-notifications';
 import { usePushNotifications } from '@/hooks/use-push-notifications';
 import { sendNotification } from '@/lib/notifications';
@@ -26,6 +26,7 @@ import { Toaster } from '@/components/ui/toaster';
 import { Bell } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { isIOSPWA, logAuthEnvironment } from '@/lib/auth-helpers';
+import { signInWithGoogleIdentityServices, waitForGoogleIdentityServices } from '@/lib/google-identity-services';
 
 export default function Home() {
   const { user, loading: userLoading } = useUser();
@@ -33,15 +34,23 @@ export default function Home() {
   const { isConnected } = useNotifications(user?.uid || null);
   const { notificationPermission, requestPermission, isSupported, isIOS, needsHTTPS, fcmToken } = usePushNotifications(user?.uid || null);
   const [showNotificationDebug, setShowNotificationDebug] = useState(false);
-  const [authInProgress, setAuthInProgress] = useState(true); // Start with true
+  const [authInProgress, setAuthInProgress] = useState(true);
 
   useEffect(() => {
     logAuthEnvironment();
     const auth = getAuth();
+    let timeoutId: NodeJS.Timeout | null = null;
 
     const initializeAuth = async () => {
-      console.log('� Initializing Auth...');
+      console.log('🚀 Initializing Auth...');
       const isiOSPWA = isIOSPWA();
+      
+      // Set a global timeout to ensure we never get stuck
+      timeoutId = setTimeout(() => {
+        console.warn('⏱️ Auth initialization timeout - forcing completion');
+        sessionStorage.removeItem('auth_redirect_pending');
+        setAuthInProgress(false);
+      }, 15000); // 15 second absolute timeout
       
       try {
         // Set persistence FIRST. This is critical for iOS PWA.
@@ -49,34 +58,50 @@ export default function Home() {
         await setPersistence(auth, persistence);
         console.log(`✅ Persistence set to ${isiOSPWA ? 'indexedDB' : 'browserLocal'}`);
 
-        // Now, check for redirect result.
-        if (sessionStorage.getItem('auth_redirect_pending')) {
+        // For iOS PWA, we should NOT process redirects as GIS handles auth
+        // Only check redirect for non-iOS environments
+        if (!isiOSPWA && sessionStorage.getItem('auth_redirect_pending')) {
           console.log('🔍 Checking for redirect result...');
-          const result = await getRedirectResult(auth);
-          sessionStorage.removeItem('auth_redirect_pending'); // Remove this immediately
           
-          if (result) {
-            console.log('✅ Successfully signed in after redirect!', result.user.email);
-            // The useUser hook will handle the user state update.
-          } else {
-            console.log('ℹ️ No redirect result found. The user might have just landed on the page.');
+          try {
+            const result = await getRedirectResult(auth);
+            sessionStorage.removeItem('auth_redirect_pending');
+            
+            if (result) {
+              console.log('✅ Successfully signed in after redirect!', result.user.email);
+            } else {
+              console.log('ℹ️ No redirect result found.');
+            }
+          } catch (redirectError: any) {
+            console.error('❌ Redirect error:', redirectError.code, redirectError.message);
+            sessionStorage.removeItem('auth_redirect_pending');
+            
+            if (redirectError.code === 'auth/network-request-failed') {
+              // Don't show alert during initialization, just log it
+              console.error('Network error during redirect. User can try signing in again.');
+            }
           }
+        } else if (isiOSPWA) {
+          // For iOS PWA, clear any stale redirect flags
+          sessionStorage.removeItem('auth_redirect_pending');
         }
       } catch (error: any) {
-        console.error('❌ Critical Auth Error during initialization:', error.code, error.message);
-        if (error.code === 'auth/network-request-failed') {
-          alert('A network error occurred during sign-in. Please check your connection and try again.');
-        }
-        // Ensure we always remove the pending flag on error
+        console.error('❌ Auth initialization error:', error.code, error.message);
         sessionStorage.removeItem('auth_redirect_pending');
       } finally {
-        // Regardless of outcome, auth initialization is complete.
+        // Clear the timeout and mark auth as complete
+        if (timeoutId) clearTimeout(timeoutId);
         console.log('🏁 Auth initialization finished.');
         setAuthInProgress(false);
       }
     };
 
     initializeAuth();
+
+    // Cleanup function
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+    };
   }, []);
 
   const [tasksSnapshot, loading, error] = useCollection(
@@ -174,8 +199,40 @@ export default function Home() {
       console.log(`✅ Persistence set to ${isIOSPWA() ? 'indexedDB' : 'browserLocal'}`);
 
       if (isIOSPWA()) {
-        console.log('🔑 iOS PWA detected, using redirect flow...');
+        console.log('🔑 iOS PWA detected, using Google Identity Services...');
+        
+        // Wait for GIS to load (script should be in layout)
+        const gisReady = await waitForGoogleIdentityServices(5000);
+        
+        if (gisReady) {
+          try {
+            console.log('✅ GIS ready, initiating sign-in...');
+            await signInWithGoogleIdentityServices();
+            console.log('✅ Successfully signed in with GIS!');
+            setAuthInProgress(false);
+            return;
+          } catch (gisError: any) {
+            console.error('❌ GIS sign-in failed:', gisError.message);
+            console.log('🔄 Falling back to redirect flow...');
+            // Fall through to redirect flow
+          }
+        } else {
+          console.warn('⚠️ GIS not available, using redirect flow...');
+        }
+        
+        // Fallback to redirect if GIS fails or unavailable
+        console.log('🔑 Using redirect flow as fallback...');
         sessionStorage.setItem('auth_redirect_pending', 'true');
+        
+        // Set a safety timeout - if redirect doesn't happen in 3 seconds, reset
+        setTimeout(() => {
+          if (sessionStorage.getItem('auth_redirect_pending')) {
+            console.warn('⚠️ Redirect did not start, resetting...');
+            sessionStorage.removeItem('auth_redirect_pending');
+            setAuthInProgress(false);
+          }
+        }, 3000);
+        
         await signInWithRedirect(auth, provider);
       } else {
         console.log('🔑 Attempting sign-in with popup...');
@@ -184,12 +241,14 @@ export default function Home() {
       }
     } catch (error: any) {
       console.error('❌ Sign-in error:', error.code, error.message);
+      sessionStorage.removeItem('auth_redirect_pending'); // Clean up on any error
+      
       if (error.code === 'auth/popup-blocked' || error.code === 'auth/cancelled-popup-request') {
         console.log('🔑 Popup blocked/cancelled, falling back to redirect...');
         sessionStorage.setItem('auth_redirect_pending', 'true');
         await signInWithRedirect(auth, provider);
       } else if (error.code === 'auth/network-request-failed') {
-        alert('Network error. Please check your internet connection and try again.');
+        alert('⚠️ Network error during sign-in.\n\nFor iOS PWAs, this is a known issue. The app will try an alternative method next time.\n\nTip: Ensure you have a stable internet connection.');
         setAuthInProgress(false);
       } else {
         alert(`Sign-in failed: ${error.message}`);
