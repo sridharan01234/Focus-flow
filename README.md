@@ -8,8 +8,10 @@ A Next.js task management application designed for users with ADHD, featuring AI
 - 📝 **Task Management** - Create, update, and organize tasks
 - 🤖 **AI Prioritization** - Intelligent task scheduling using Google Genkit
 - 🔔 **Real-time Notifications** - Instant updates across all devices using Pusher
-- 📅 **Smart Scheduling** - AI understands current date/time for better recommendations
+- � **Push Notifications** - Get notified on your iPhone and mobile devices
+- �📅 **Smart Scheduling** - AI understands current date/time for better recommendations
 - 🎨 **Modern UI** - Clean interface with Radix UI components
+- 📲 **PWA Support** - Installable on home screen, works like a native app
 
 ## 🚀 Quick Start
 
@@ -45,7 +47,9 @@ Visit http://localhost:9002
 ## 📚 Documentation
 
 - **[Quick Start Guide](docs/QUICKSTART.md)** - Get up and running in 5 minutes
+- **[Push Notifications for iPhone](docs/PUSH_QUICKSTART.md)** - 5-minute mobile setup
 - **[Pusher Setup](docs/PUSHER_SETUP.md)** - Complete notification setup guide
+- **[iPhone Push Guide](docs/IPHONE_PUSH_NOTIFICATIONS.md)** - Detailed iOS setup
 - **[AI Date/Time Fix](docs/AI_DATETIME_FIX.md)** - How AI uses current date
 - **[Implementation Summary](docs/IMPLEMENTATION_SUMMARY.md)** - Full technical details
 
@@ -70,9 +74,21 @@ PUSHER_APP_ID=
 PUSHER_SECRET=
 NEXT_PUBLIC_PUSHER_KEY=
 NEXT_PUBLIC_PUSHER_CLUSTER=
+
+# Push Notifications (Mobile)
+NEXT_PUBLIC_FIREBASE_VAPID_KEY=
+FIREBASE_PROJECT_ID=
+FIREBASE_CLIENT_EMAIL=
+FIREBASE_PRIVATE_KEY=
 ```
 
 ## 🎯 Recent Updates
+
+### Push Notifications for iPhone & Mobile 📱
+- Receive notifications on your phone when tasks change
+- Works on iPhone (iOS 16.4+) in Safari
+- Install as home screen PWA for best experience
+- Firebase Cloud Messaging integration
 
 ### Real-time Notifications with Pusher
 - Instant notifications across all connected devices

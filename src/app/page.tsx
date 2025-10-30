@@ -20,13 +20,17 @@ import { useCollection } from 'react-firebase-hooks/firestore';
 import { Button } from '@/components/ui/button';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
 import { useNotifications } from '@/hooks/use-notifications';
+import { usePushNotifications } from '@/hooks/use-push-notifications';
 import { sendNotification } from '@/lib/notifications';
 import { Toaster } from '@/components/ui/toaster';
+import { Bell } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 export default function Home() {
   const { user, loading: userLoading } = useUser();
   const db = getFirestore();
   const { isConnected } = useNotifications(user?.uid || null);
+  const { notificationPermission, requestPermission, isSupported } = usePushNotifications(user?.uid || null);
 
   const [tasksSnapshot, loading, error] = useCollection(
     user ? collection(db, 'users', user.uid, 'tasks') : null
@@ -148,6 +152,18 @@ export default function Home() {
       <main className="flex-1 container mx-auto px-4 md:px-6 py-8">
         {user ? (
           <div className="max-w-3xl mx-auto flex flex-col gap-8">
+            {isSupported && notificationPermission !== 'granted' && (
+              <Alert>
+                <Bell className="h-4 w-4" />
+                <AlertTitle>Enable Push Notifications</AlertTitle>
+                <AlertDescription className="flex items-center justify-between">
+                  <span>Get notified on your phone and other devices</span>
+                  <Button onClick={requestPermission} variant="outline" size="sm">
+                    Enable
+                  </Button>
+                </AlertDescription>
+              </Alert>
+            )}
             <TaskForm onAddTask={handleAddTask} />
             <TaskList
               tasks={tasks}
