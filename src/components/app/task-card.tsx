@@ -49,6 +49,7 @@ const statusConfig: Record<
   completed: { icon: CheckCircle2, label: 'Completed', color: 'text-green-500' },
   'follow-up': { icon: Flag, label: 'Follow-up', color: 'text-blue-500' },
   missing: { icon: AlertTriangle, label: 'Missing', color: 'text-yellow-500' },
+  missed: { icon: AlertTriangle, label: 'Missed', color: 'text-red-500' },
 };
 
 export function TaskCard({ task, onUpdateTask, onDeleteTask }: TaskCardProps) {
@@ -230,11 +231,11 @@ export function TaskCard({ task, onUpdateTask, onDeleteTask }: TaskCardProps) {
                   <span>Mark for Follow-up</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  onSelect={() => handleStatusChange('missing')}
-                  disabled={task.status === 'missing'}
+                  onSelect={() => handleStatusChange('missed')}
+                  disabled={task.status === 'missed'}
                 >
                   <AlertTriangle className="mr-2 h-4 w-4" />
-                  <span>Mark as Missing</span>
+                  <span>Mark as Missed</span>
                 </DropdownMenuItem>
                 {task.status !== 'active' && (
                   <DropdownMenuItem onSelect={() => handleStatusChange('active')}>

@@ -127,7 +127,7 @@ export function TaskList({ tasks, onUpdateTask, onDeleteTask, onSetTasks, loadin
           <TabsList>
             <TabsTrigger value="all">Active</TabsTrigger>
             <TabsTrigger value="follow-up">Follow-up</TabsTrigger>
-            <TabsTrigger value="missing">Missing</TabsTrigger>
+            <TabsTrigger value="missed">Missed</TabsTrigger>
             <TabsTrigger value="completed">Completed</TabsTrigger>
           </TabsList>
         </Tabs>

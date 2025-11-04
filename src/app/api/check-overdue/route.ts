@@ -43,10 +43,10 @@ export async function POST(request: NextRequest) {
         if (timeSinceLastNotification > NOTIFICATION_INTERVAL || lastNotification === 0) {
           overdueTasks.push(task);
           
-          // Update task status to 'missing' and record notification time
+          // Update task status to 'missed' and record notification time
           updates.push(
             tasksRef.doc(doc.id).update({
-              status: 'missing',
+              status: 'missed',
               lastMissingNotification: currentTime
             })
           );
@@ -63,8 +63,8 @@ export async function POST(request: NextRequest) {
         const deadlineDate = new Date(task.deadline);
         const hoursOverdue = Math.floor((currentTime - deadlineDate.getTime()) / (1000 * 60 * 60));
         
-        await sendNotification(userId, 'task-overdue', {
-          title: '⚠️ Task Overdue!',
+        await sendNotification(userId, 'task-missed', {
+          title: 'Task Missed!',
           description: `"${task.description}" was due ${hoursOverdue}h ago`,
           type: 'warning',
         });

@@ -28,6 +28,8 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { isIOSPWA, logAuthEnvironment } from '@/lib/auth-helpers';
 import { signInWithGoogleIdentityServices, waitForGoogleIdentityServices } from '@/lib/google-identity-services';
 import { generateAISuggestions, getOverdueTasks } from '@/lib/ai-suggestions';
+import { Hero } from '@/components/app/hero';
+import { LoadingSpinner } from '@/components/app/loading-spinner';
 
 export default function Home() {
   const { user, loading: userLoading } = useUser();
@@ -37,6 +39,7 @@ export default function Home() {
   const [showNotificationDebug, setShowNotificationDebug] = useState(false);
   const [authInProgress, setAuthInProgress] = useState(true);
   const [loadingAI, setLoadingAI] = useState(false);
+  const [isCheckingOverdue, setIsCheckingOverdue] = useState(false);
 
   useEffect(() => {
     logAuthEnvironment();
@@ -108,9 +111,10 @@ export default function Home() {
 
   // Check for overdue tasks periodically
   useEffect(() => {
-    if (!user) return;
-    
+    if (!user || isCheckingOverdue) return;
+
     const checkOverdue = async () => {
+      setIsCheckingOverdue(true);
       try {
         await fetch('/api/check-overdue', {
           method: 'POST',
@@ -119,6 +123,8 @@ export default function Home() {
         });
       } catch (error) {
         console.error('Failed to check overdue tasks:', error);
+      } finally {
+        setIsCheckingOverdue(false);
       }
     };
     
@@ -404,11 +410,7 @@ export default function Home() {
   };
 
   if (userLoading || authInProgress) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div>Loading...</div>
-      </div>
-    );
+    return <LoadingSpinner />;
   }
 
   return (
@@ -416,165 +418,147 @@ export default function Home() {
       <AppHeader user={user || null} onSignOut={handleSignOut} />
       <main className="flex-1 container mx-auto px-4 md:px-6 py-8">
         {user ? (
-          <div className="max-w-3xl mx-auto flex flex-col gap-8">
-            <Button 
-              onClick={() => setShowNotificationDebug(!showNotificationDebug)} 
-              variant="outline" 
-              size="sm"
-              className="self-start"
-            >
-              <Bell className="mr-2 h-4 w-4" />
-              Notification Status
-            </Button>
-
-            {showNotificationDebug && (
-              <Alert>
-                <AlertTitle>🔍 Notification Debug Info</AlertTitle>
-                <AlertDescription className="text-xs space-y-1 mt-2">
-                  <div>Permission: <strong>{notificationPermission}</strong></div>
-                  <div>Supported: <strong>{isSupported ? 'Yes' : 'No'}</strong></div>
-                  <div>iOS: <strong>{isIOS ? 'Yes' : 'No'}</strong></div>
-                  <div>HTTPS: <strong>{needsHTTPS ? 'No (Required!)' : 'Yes'}</strong></div>
-                  <div>FCM Token: <strong>{fcmToken ? 'Registered ✅' : 'Not registered'}</strong></div>
-                  <div>Standalone Mode: <strong>{typeof window !== 'undefined' && (window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone) ? 'Yes ✅' : 'No (Add to Home Screen!)'}</strong></div>
-                  {isIOS && !isSupported && (
-                    <div className="pt-2 text-amber-600 font-semibold">
-                      ⚠️ On iOS, you must ADD TO HOME SCREEN first, then open from home screen icon!
-                    </div>
-                  )}
-                  <div className="pt-2">
-                    <Button onClick={requestPermission} size="sm" className="w-full">
-                      Request Permission Now
-                    </Button>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="lg:col-span-2 flex flex-col gap-8">
+              <TaskForm onAddTask={handleAddTask} />
+              <TaskList
+                tasks={tasks}
+                onUpdateTask={handleUpdateTask}
+                onDeleteTask={handleDeleteTask}
+                onSetTasks={handleSetTasks}
+                loading={loading}
+              />
+            </div>
+            <div className="flex flex-col gap-8">
+              <div className="p-4 bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-950 dark:to-blue-950 rounded-lg border border-purple-200 dark:border-purple-800">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-purple-900 dark:text-purple-100">✨ AI Task Suggestions</h3>
+                    <p className="text-sm text-purple-700 dark:text-purple-300">Get smart recommendations based on time and context</p>
                   </div>
-                </AlertDescription>
-              </Alert>
-            )}
+                  <Button
+                    onClick={handleGetAISuggestions}
+                    disabled={loadingAI}
+                    className="bg-purple-600 hover:bg-purple-700"
+                  >
+                    {loadingAI ? '🤖 Thinking...' : '✨ Get Suggestions'}
+                  </Button>
+                </div>
+              </div>
+              <Button 
+                onClick={() => setShowNotificationDebug(!showNotificationDebug)} 
+                variant="outline" 
+                size="sm"
+              >
+                <Bell className="mr-2 h-4 w-4" />
+                Notification Status
+              </Button>
 
-            {!isSupported && isIOS && (
-              <Alert className="border-2 border-amber-500 bg-amber-50 dark:bg-amber-950">
-                <Bell className="h-5 w-5 text-amber-600" />
-                <AlertTitle className="text-lg font-bold text-amber-800 dark:text-amber-200">
-                  📱 Add to Home Screen Required
-                </AlertTitle>
-                <AlertDescription className="flex flex-col gap-3 mt-2">
-                  <div className="text-sm text-amber-700 dark:text-amber-300">
-                    <p className="font-semibold mb-2">On iPhone, push notifications only work for apps added to Home Screen:</p>
-                    <ol className="list-decimal list-inside space-y-1 text-xs">
-                      <li>Tap the Share button (square with arrow) at the bottom</li>
-                      <li>Scroll down and tap "Add to Home Screen"</li>
-                      <li>Tap "Add" in the top right</li>
-                      <li>Open the app from your Home Screen (not Safari)</li>
-                      <li>Then you can enable notifications!</li>
-                    </ol>
-                  </div>
-                </AlertDescription>
-              </Alert>
-            )}
-
-            {isSupported && notificationPermission !== 'granted' && (
-              <Alert className="border-2 border-primary">
-                <Bell className="h-5 w-5" />
-                <AlertTitle className="text-lg font-bold">
-                  {needsHTTPS ? '🔒 HTTPS Required' : '🔔 Enable Push Notifications'}
-                </AlertTitle>
-                <AlertDescription className="flex flex-col gap-3 mt-2">
-                  {needsHTTPS ? (
-                    <div className="text-sm">
-                      <p className="font-semibold">iPhone requires HTTPS for push notifications.</p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Please deploy to Firebase Hosting and use the deployed URL instead of localhost.
-                      </p>
+              {showNotificationDebug && (
+                <Alert>
+                  <AlertTitle>🔍 Notification Debug Info</AlertTitle>
+                  <AlertDescription className="text-xs space-y-1 mt-2">
+                    <div>Permission: <strong>{notificationPermission}</strong></div>
+                    <div>Supported: <strong>{isSupported ? 'Yes' : 'No'}</strong></div>
+                    <div>iOS: <strong>{isIOS ? 'Yes' : 'No'}</strong></div>
+                    <div>HTTPS: <strong>{needsHTTPS ? 'No (Required!)' : 'Yes'}</strong></div>
+                    <div>FCM Token: <strong>{fcmToken ? 'Registered ✅' : 'Not registered'}</strong></div>
+                    <div>Standalone Mode: <strong>{typeof window !== 'undefined' && (window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone) ? 'Yes ✅' : 'No (Add to Home Screen!)'}</strong></div>
+                    {isIOS && !isSupported && (
+                      <div className="pt-2 text-amber-600 font-semibold">
+                        ⚠️ On iOS, you must ADD TO HOME SCREEN first, then open from home screen icon!
+                      </div>
+                    )}
+                    <div className="pt-2">
+                      <Button onClick={requestPermission} size="sm" className="w-full">
+                        Request Permission Now
+                      </Button>
                     </div>
-                  ) : (
-                    <>
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {!isSupported && isIOS && (
+                <Alert className="border-2 border-amber-500 bg-amber-50 dark:bg-amber-950">
+                  <Bell className="h-5 w-5 text-amber-600" />
+                  <AlertTitle className="text-lg font-bold text-amber-800 dark:text-amber-200">
+                    📱 Add to Home Screen Required
+                  </AlertTitle>
+                  <AlertDescription className="flex flex-col gap-3 mt-2">
+                    <div className="text-sm text-amber-700 dark:text-amber-300">
+                      <p className="font-semibold mb-2">On iPhone, push notifications only work for apps added to Home Screen:</p>
+                      <ol className="list-decimal list-inside space-y-1 text-xs">
+                        <li>Tap the Share button (square with arrow) at the bottom</li>
+                        <li>Scroll down and tap "Add to Home Screen"</li>
+                        <li>Tap "Add" in the top right</li>
+                        <li>Open the app from your Home Screen (not Safari)</li>
+                        <li>Then you can enable notifications!</li>
+                      </ol>
+                    </div>
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {isSupported && notificationPermission !== 'granted' && (
+                <Alert className="border-2 border-primary">
+                  <Bell className="h-5 w-5" />
+                  <AlertTitle className="text-lg font-bold">
+                    {needsHTTPS ? '🔒 HTTPS Required' : '🔔 Enable Push Notifications'}
+                  </AlertTitle>
+                  <AlertDescription className="flex flex-col gap-3 mt-2">
+                    {needsHTTPS ? (
                       <div className="text-sm">
-                        <p className="font-semibold mb-1">
-                          {isIOS 
-                            ? '📱 Get system notifications on your iPhone like WhatsApp'
-                            : '📱 Get system notifications on all your devices'
-                          }
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {isIOS 
-                            ? "Requires Safari browser & iOS 16.4+. You'll see a permission popup."
-                            : 'Click Enable and allow notifications when prompted by your browser.'
-                          }
+                        <p className="font-semibold">iPhone requires HTTPS for push notifications.</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Please deploy to Firebase Hosting and use the deployed URL instead of localhost.
                         </p>
                       </div>
-                      <Button onClick={requestPermission} className="w-full" size="lg">
-                        <Bell className="mr-2 h-4 w-4" />
-                        Enable Push Notifications
-                      </Button>
-                    </>
-                  )}
-                </AlertDescription>
-              </Alert>
-            )}
-            {notificationPermission === 'granted' && (
-              <Alert className="border-green-500 bg-green-50 dark:bg-green-950">
-                <Bell className="h-5 w-5 text-green-600" />
-                <AlertTitle className="text-green-800 dark:text-green-200">
-                  ✅ Push Notifications Active
-                </AlertTitle>
-                <AlertDescription>
-                  <div className="text-sm text-green-700 dark:text-green-300">
-                    You'll receive system notifications (like WhatsApp) when tasks are added, updated, or deleted.
-                  </div>
-                </AlertDescription>
-              </Alert>
-            )}
-
-            {/* AI Suggestions Button */}
-            <div className="p-4 bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-950 dark:to-blue-950 rounded-lg border border-purple-200 dark:border-purple-800">
-              <div className="flex items-center justify-between">
-                <div className="flex-1">
-                  <h3 className="font-semibold text-purple-900 dark:text-purple-100">✨ AI Task Suggestions</h3>
-                  <p className="text-sm text-purple-700 dark:text-purple-300">Get smart recommendations based on time and context</p>
-                </div>
-                <Button
-                  onClick={handleGetAISuggestions}
-                  disabled={loadingAI}
-                  className="bg-purple-600 hover:bg-purple-700"
-                >
-                  {loadingAI ? '🤖 Thinking...' : '✨ Get Suggestions'}
-                </Button>
-              </div>
-            </div>
-
-            <TaskForm onAddTask={handleAddTask} />
-            <TaskList
-              tasks={tasks}
-              onUpdateTask={handleUpdateTask}
-              onDeleteTask={handleDeleteTask}
-              onSetTasks={handleSetTasks}
-              loading={loading}
-            />
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center h-[60vh] gap-6 text-center px-4">
-            <h2 className="text-2xl font-bold">Welcome to FocusFlow</h2>
-            <p className="text-muted-foreground">Please sign in to manage your tasks.</p>
-            <div className="flex flex-col gap-3 w-full max-w-sm">
-              <Button onClick={handleSimpleSignIn} disabled={authInProgress} size="lg" variant="default">
-                {authInProgress ? 'Signing in...' : '🔐 Quick Sign In (iOS Fix)'}
-              </Button>
-              <div className="text-xs text-muted-foreground">or</div>
-              <Button onClick={handleSignIn} disabled={authInProgress} size="sm" variant="outline">
-                Sign in with Google
-              </Button>
-              {isIOSPWA() && (
-                <Button 
-                  onClick={() => window.location.href = '/safari-signin'} 
-                  variant="ghost"
-                  size="sm"
-                  className="text-xs"
-                >
-                  Having trouble? Try Safari sign-in →
-                </Button>
+                    ) : (
+                      <>
+                        <div className="text-sm">
+                          <p className="font-semibold mb-1">
+                            {isIOS 
+                              ? '📱 Get system notifications on your iPhone like WhatsApp'
+                              : '📱 Get system notifications on all your devices'
+                            }
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {isIOS 
+                              ? "Requires Safari browser & iOS 16.4+. You'll see a permission popup."
+                              : 'Click Enable and allow notifications when prompted by your browser.'
+                            }
+                          </p>
+                        </div>
+                        <Button onClick={requestPermission} className="w-full" size="lg">
+                          <Bell className="mr-2 h-4 w-4" />
+                          Enable Push Notifications
+                        </Button>
+                      </>
+                    )}
+                  </AlertDescription>
+                </Alert>
+              )}
+              {notificationPermission === 'granted' && (
+                <Alert className="border-green-500 bg-green-50 dark:bg-green-950">
+                  <Bell className="h-5 w-5 text-green-600" />
+                  <AlertTitle className="text-green-800 dark:text-green-200">
+                    ✅ Push Notifications Active
+                  </AlertTitle>
+                  <AlertDescription>
+                    <div className="text-sm text-green-700 dark:text-green-300">
+                      You'll receive system notifications (like WhatsApp) when tasks are added, updated, or deleted.
+                    </div>
+                  </AlertDescription>
+                </Alert>
               )}
             </div>
           </div>
+        ) : (
+          <Hero 
+            onSignIn={handleSignIn} 
+            onSimpleSignIn={handleSimpleSignIn} 
+            authInProgress={authInProgress} 
+          />
         )}
       </main>
       <Toaster />
