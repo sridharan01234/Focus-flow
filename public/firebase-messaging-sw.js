@@ -21,17 +21,24 @@ const messaging = firebase.messaging();
 messaging.onBackgroundMessage((payload) => {
   console.log('[firebase-messaging-sw.js] Received background message ', payload);
   
-  const notificationTitle = payload.notification?.title || 'FocusFlow';
+  // Extract title and body from data payload (not notification payload)
+  const notificationTitle = payload.data?.title || 'FocusFlow';
+  const notificationBody = payload.data?.body || 'You have a new notification';
+  const notificationId = payload.data?.notificationId || payload.data?.event || payload.messageId || `ff-${Date.now()}`;
+  
   const notificationOptions = {
-    body: payload.notification?.body || 'You have a new notification',
+    body: notificationBody,
     icon: '/icon-192x192.png',
     badge: '/badge-72x72.png',
-    tag: payload.data?.tag || 'default',
+    tag: notificationId,
     data: payload.data,
     requireInteraction: false,
   };
 
-  self.registration.showNotification(notificationTitle, notificationOptions);
+  return self.registration.getNotifications({ tag: notificationOptions.tag }).then(existing => {
+    existing.forEach(notification => notification.close());
+    return self.registration.showNotification(notificationTitle, notificationOptions);
+  });
 });
 
 // Handle notification clicks

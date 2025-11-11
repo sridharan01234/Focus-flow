@@ -52,12 +52,14 @@ export async function sendPushNotification(
     const app = getAdminApp();
     const messaging = getMessaging(app);
 
+    // Send data-only message (no notification payload)
+    // This prevents automatic notification display and gives full control to the service worker
     const message = {
-      notification: {
+      data: {
         title,
         body,
+        ...(data || {}),
       },
-      data: data || {},
       tokens,
     };
 

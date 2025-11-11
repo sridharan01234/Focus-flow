@@ -6,6 +6,11 @@ export async function sendNotification(
   data: NotificationData
 ) {
   try {
+    const notificationId =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
     // Send real-time notification via Pusher
     const pusherResponse = await fetch('/api/notifications', {
       method: 'POST',
@@ -20,6 +25,7 @@ export async function sendNotification(
     }
 
     // Also send push notification via FCM
+    // Note: All data values must be strings for FCM data-only messages
     const pushResponse = await fetch('/api/push-notification', {
       method: 'POST',
       headers: {
@@ -28,8 +34,12 @@ export async function sendNotification(
       body: JSON.stringify({
         userId,
         title: data.title,
-        body: data.description,
-        data: { event, type: data.type },
+        body: data.description || '',
+        data: {
+          event,
+          type: data.type,
+          notificationId,
+        },
       }),
     });
 

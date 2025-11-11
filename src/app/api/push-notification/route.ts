@@ -39,7 +39,15 @@ export async function POST(request: NextRequest) {
     const userData = userDoc.data();
     const fcmTokens = userData?.fcmTokens || {};
 
-    if (Object.keys(fcmTokens).length === 0) {
+    const tokens = Array.from(
+      new Set(
+        Object.values(fcmTokens)
+          .map((t: any) => t?.token)
+          .filter((token): token is string => typeof token === 'string' && token.length > 0)
+      )
+    );
+
+    if (tokens.length === 0) {
       console.log('⚠️ No FCM tokens found for user:', userId);
       console.log('💡 User needs to click "Enable" button to grant notification permission');
       return NextResponse.json({
@@ -48,10 +56,9 @@ export async function POST(request: NextRequest) {
       }, { status: 404 });
     }
 
-    // Extract token strings from the fcmTokens object
-    const tokens = Object.values(fcmTokens).map((t: any) => t.token);
-
-    console.log(`Sending push notification to ${tokens.length} device(s)`);
+    console.log(`Sending push notification to ${tokens.length} device(s)`, {
+      tokens,
+    });
 
     // Send push notification via Firebase Admin
     const result = await sendPushNotification(
