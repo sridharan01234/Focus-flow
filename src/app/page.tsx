@@ -30,6 +30,7 @@ import { signInWithGoogleIdentityServices, waitForGoogleIdentityServices } from 
 import { generateAISuggestions, getOverdueTasks } from '@/lib/ai-suggestions';
 import { Hero } from '@/components/app/hero';
 import { LoadingSpinner } from '@/components/app/loading-spinner';
+import { useOverdueMonitor } from '@/hooks/use-overdue-monitor';
 
 export default function Home() {
   const { user, loading: userLoading } = useUser();
@@ -39,7 +40,6 @@ export default function Home() {
   const [showNotificationDebug, setShowNotificationDebug] = useState(false);
   const [authInProgress, setAuthInProgress] = useState(true);
   const [loadingAI, setLoadingAI] = useState(false);
-  const [isCheckingOverdue, setIsCheckingOverdue] = useState(false);
 
   useEffect(() => {
     logAuthEnvironment();
@@ -49,14 +49,14 @@ export default function Home() {
     const initializeAuth = async () => {
       console.log('🚀 Initializing Auth...');
       const isiOSPWA = isIOSPWA();
-      
+
       // Set a global timeout to ensure we never get stuck
       timeoutId = setTimeout(() => {
         console.warn('⏱️ Auth initialization timeout - forcing completion');
         sessionStorage.removeItem('auth_redirect_pending');
         setAuthInProgress(false);
       }, 15000); // 15 second absolute timeout
-      
+
       try {
         // Set persistence FIRST. This is critical for iOS PWA.
         const persistence = isiOSPWA ? indexedDBLocalPersistence : browserLocalPersistence;
@@ -67,11 +67,11 @@ export default function Home() {
         // Only check redirect for non-iOS environments
         if (!isiOSPWA && sessionStorage.getItem('auth_redirect_pending')) {
           console.log('🔍 Checking for redirect result...');
-          
+
           try {
             const result = await getRedirectResult(auth);
             sessionStorage.removeItem('auth_redirect_pending');
-            
+
             if (result) {
               console.log('✅ Successfully signed in after redirect!', result.user.email);
             } else {
@@ -80,7 +80,7 @@ export default function Home() {
           } catch (redirectError: any) {
             console.error('❌ Redirect error:', redirectError.code, redirectError.message);
             sessionStorage.removeItem('auth_redirect_pending');
-            
+
             if (redirectError.code === 'auth/network-request-failed') {
               // Don't show alert during initialization, just log it
               console.error('Network error during redirect. User can try signing in again.');
@@ -110,32 +110,7 @@ export default function Home() {
   }, []);
 
   // Check for overdue tasks periodically
-  useEffect(() => {
-    if (!user || isCheckingOverdue) return;
 
-    const checkOverdue = async () => {
-      setIsCheckingOverdue(true);
-      try {
-        await fetch('/api/check-overdue', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: user.uid })
-        });
-      } catch (error) {
-        console.error('Failed to check overdue tasks:', error);
-      } finally {
-        setIsCheckingOverdue(false);
-      }
-    };
-    
-    // Check immediately
-    checkOverdue();
-    
-    // Then check every 15 minutes
-    const interval = setInterval(checkOverdue, 15 * 60 * 1000);
-    
-    return () => clearInterval(interval);
-  }, [user]);
 
   const [tasksSnapshot, loading, error] = useCollection(
     user ? collection(db, 'users', user.uid, 'tasks') : null
@@ -146,6 +121,9 @@ export default function Home() {
       id: doc.id,
       ...(doc.data() as Omit<Task, 'id'>),
     })) || [];
+
+  // Use the new real-time overdue monitor
+  useOverdueMonitor(tasks, user?.uid || null);
 
   const handleAddTask = async (description: string, deadline?: string, estimatedDuration?: number) => {
     if (!user) return;
@@ -158,7 +136,7 @@ export default function Home() {
       ...(estimatedDuration && { estimatedDuration }),
     };
     await addDoc(collection(db, 'users', user.uid, 'tasks'), newTask);
-    
+
     try {
       await sendNotification(user.uid, 'task-added', {
         title: 'Task Added',
@@ -174,7 +152,7 @@ export default function Home() {
     if (!user) return;
     const taskRef = doc(db, 'users', user.uid, 'tasks', id);
     await updateDoc(taskRef, updates);
-    
+
     try {
       await sendNotification(user.uid, 'task-updated', {
         title: 'Task Updated',
@@ -190,7 +168,7 @@ export default function Home() {
     if (!user) return;
     const taskRef = doc(db, 'users', user.uid, 'tasks', id);
     await deleteDoc(taskRef);
-    
+
     try {
       await sendNotification(user.uid, 'task-deleted', {
         title: 'Task Deleted',
@@ -210,7 +188,7 @@ export default function Home() {
       batch.set(taskRef, task, { merge: true });
     });
     await batch.commit();
-    
+
     try {
       await sendNotification(user.uid, 'tasks-prioritized', {
         title: 'Tasks Prioritized',
@@ -226,7 +204,7 @@ export default function Home() {
     setAuthInProgress(true);
     const auth = getAuth();
     const provider = new GoogleAuthProvider();
-    provider.setCustomParameters({ 
+    provider.setCustomParameters({
       prompt: 'select_account'
     });
 
@@ -237,7 +215,7 @@ export default function Home() {
 
       if (isIOSPWA()) {
         console.log('🔑 iOS PWA detected - trying POPUP (not redirect!)');
-        
+
         // CRITICAL FIX: Try popup FIRST even on iOS PWA
         // iOS 16.4+ actually supports popups in PWA mode
         try {
@@ -248,14 +226,14 @@ export default function Home() {
           return;
         } catch (popupError: any) {
           console.error('❌ Popup failed:', popupError.code, popupError.message);
-          
+
           // If popup truly doesn't work, show helpful message
           if (popupError.code === 'auth/popup-blocked') {
             alert('⚠️ Pop-up blocked\n\niOS PWA requires opening in Safari for first-time sign-in.\n\nSteps:\n1. Copy your app URL\n2. Open in Safari (not PWA)\n3. Sign in there\n4. Return to PWA - you\'ll be signed in!');
             setAuthInProgress(false);
             return;
           }
-          
+
           if (popupError.code === 'auth/network-request-failed') {
             // Last resort: instruct user to sign in via Safari
             const shouldOpenSafari = confirm(
@@ -265,7 +243,7 @@ export default function Home() {
               '• TAP CANCEL to try again later\n\n' +
               'After signing in via Safari, return to this PWA and you\'ll be signed in automatically.'
             );
-            
+
             if (shouldOpenSafari) {
               // Copy URL to clipboard
               const url = window.location.href;
@@ -278,7 +256,7 @@ export default function Home() {
             setAuthInProgress(false);
             return;
           }
-          
+
           // Unknown error
           alert(`Sign-in error: ${popupError.message}\n\nTry opening the app in Safari instead of PWA mode.`);
           setAuthInProgress(false);
@@ -303,7 +281,7 @@ export default function Home() {
     } catch (error: any) {
       console.error('❌ Sign-in error:', error.code, error.message);
       sessionStorage.removeItem('auth_redirect_pending');
-      
+
       if (error.code === 'auth/network-request-failed') {
         alert('⚠️ Network error during sign-in.\n\nPlease check your internet connection and try again.');
         setAuthInProgress(false);
@@ -318,7 +296,7 @@ export default function Home() {
     setAuthInProgress(true);
     try {
       console.log('🔐 Using simple DB auth...');
-      
+
       // Call the simple auth API
       const response = await fetch('/api/simple-auth', {
         method: 'POST',
@@ -340,7 +318,7 @@ export default function Home() {
       // Sign in with the custom token
       const auth = getAuth();
       await signInWithCustomToken(auth, data.customToken);
-      
+
       console.log('✅ Signed in successfully with custom token!');
       setAuthInProgress(false);
     } catch (error: any) {
@@ -353,17 +331,17 @@ export default function Home() {
   const handleGetAISuggestions = async () => {
     if (!user) return;
     setLoadingAI(true);
-    
+
     try {
       console.log('🤖 Getting AI suggestions...');
       const suggestions = await generateAISuggestions(tasks, new Date());
-      
+
       if (suggestions.length === 0) {
         alert('No new suggestions at the moment. Check back later!');
         setLoadingAI(false);
         return;
       }
-      
+
       // Add AI suggested tasks
       for (const suggestion of suggestions) {
         const newTask = {
@@ -379,10 +357,10 @@ export default function Home() {
           aiSuggested: true,
           aiPriority: suggestion.priority
         };
-        
+
         await addDoc(collection(db, 'users', user.uid, 'tasks'), newTask);
       }
-      
+
       // Send notification
       try {
         await sendNotification(user.uid, 'ai-suggestions', {
@@ -393,9 +371,9 @@ export default function Home() {
       } catch (error) {
         console.error('Failed to send notification:', error);
       }
-      
+
       alert(`✅ Added ${suggestions.length} AI-suggested tasks!\n\nCheck your task list for smart recommendations based on the current time and your existing tasks.`);
-      
+
     } catch (error: any) {
       console.error('❌ AI suggestions error:', error);
       alert('Failed to get AI suggestions. Please try again.');
@@ -445,9 +423,9 @@ export default function Home() {
                   </Button>
                 </div>
               </div>
-              <Button 
-                onClick={() => setShowNotificationDebug(!showNotificationDebug)} 
-                variant="outline" 
+              <Button
+                onClick={() => setShowNotificationDebug(!showNotificationDebug)}
+                variant="outline"
                 size="sm"
               >
                 <Bell className="mr-2 h-4 w-4" />
@@ -517,13 +495,13 @@ export default function Home() {
                       <>
                         <div className="text-sm">
                           <p className="font-semibold mb-1">
-                            {isIOS 
+                            {isIOS
                               ? '📱 Get system notifications on your iPhone like WhatsApp'
                               : '📱 Get system notifications on all your devices'
                             }
                           </p>
                           <p className="text-xs text-muted-foreground">
-                            {isIOS 
+                            {isIOS
                               ? "Requires Safari browser & iOS 16.4+. You'll see a permission popup."
                               : 'Click Enable and allow notifications when prompted by your browser.'
                             }
@@ -554,10 +532,10 @@ export default function Home() {
             </div>
           </div>
         ) : (
-          <Hero 
-            onSignIn={handleSignIn} 
-            onSimpleSignIn={handleSimpleSignIn} 
-            authInProgress={authInProgress} 
+          <Hero
+            onSignIn={handleSignIn}
+            onSimpleSignIn={handleSimpleSignIn}
+            authInProgress={authInProgress}
           />
         )}
       </main>

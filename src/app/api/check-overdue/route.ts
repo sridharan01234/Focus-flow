@@ -8,7 +8,7 @@ const NOTIFICATION_INTERVAL = 30 * 60 * 1000; // 30 minutes between repeat notif
 export async function POST(request: NextRequest) {
   try {
     const { userId } = await request.json();
-    
+
     if (!userId) {
       return NextResponse.json(
         { error: 'User ID required' },
@@ -18,51 +18,51 @@ export async function POST(request: NextRequest) {
 
     const adminApp = getAdminApp();
     const db = getFirestore(adminApp);
-    
+
     const currentTime = Date.now();
     const tasksRef = db.collection('users').doc(userId).collection('tasks');
     const snapshot = await tasksRef.where('status', '!=', 'completed').get();
-    
+
     const overdueTasks: any[] = [];
     const updates: Promise<any>[] = [];
-    
+
     snapshot.forEach(doc => {
       const task: any = { id: doc.id, ...doc.data() };
-      
+
       // Check if task has a deadline
       if (!task.deadline) return;
-      
+
       const deadline = new Date(task.deadline).getTime();
-      
+
       // Task is overdue
       if (currentTime > deadline) {
         const lastNotification = task.lastMissingNotification || 0;
         const timeSinceLastNotification = currentTime - lastNotification;
-        
+
         // Check if we should send a notification (first time or after interval)
         if (timeSinceLastNotification > NOTIFICATION_INTERVAL || lastNotification === 0) {
           overdueTasks.push(task);
-          
+
           // Update task status to 'missed' and record notification time
           updates.push(
             tasksRef.doc(doc.id).update({
-              status: 'missed',
+              status: 'missing',
               lastMissingNotification: currentTime
             })
           );
         }
       }
     });
-    
+
     // Execute all updates
     await Promise.all(updates);
-    
+
     // Send notifications for overdue tasks
     for (const task of overdueTasks) {
       try {
         const deadlineDate = new Date(task.deadline);
         const hoursOverdue = Math.floor((currentTime - deadlineDate.getTime()) / (1000 * 60 * 60));
-        
+
         await sendNotification(userId, 'task-missed', {
           title: 'Task Missed!',
           description: `"${task.description}" was due ${hoursOverdue}h ago`,
@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
         console.error(`Failed to send notification for task ${task.id}:`, notifError);
       }
     }
-    
+
     return NextResponse.json({
       success: true,
       overdueCount: overdueTasks.length,
